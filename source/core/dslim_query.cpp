@@ -21,18 +21,18 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include "dslim_fileout.h"
-#include "msquery.h"
+#include "msquery.hpp"
 #include "dslim.h"
 #include "lwqueue.h"
 #include "lwbuff.h"
 #include "scheduler.h"
+#include "ms2prep.hpp"
 #include "hicops_instr.hpp"
 
 using namespace std;
 
 extern gParams   params;
 extern BYICount  *Score;
-extern vector<string_t> queryfiles;
 
 /* Global variables */
 float_t *hyperscores         = NULL;
@@ -41,7 +41,7 @@ uchar_t *sCArr               = NULL;
 #ifdef USE_MPI
 DSLIM_Comm *CommHandle    = NULL;
 hCell      *CandidatePSMS  = NULL;
-#endif /* USE_MPI */
+#endif // USE_MPI
 
 Scheduler  *SchedHandle    = NULL;
 expeRT     *ePtrs          = NULL;
@@ -49,7 +49,7 @@ expeRT     *ePtrs          = NULL;
 /* Lock for query file vector and thread manager */
 lock_t qfilelock;
 lwqueue<MSQuery *> *qfPtrs = NULL;
-MSQuery **ptrs             = NULL;
+
 int_t spectrumID             = 0;
 int_t nBatches               = 0;
 int_t dssize                 = 0;
@@ -64,7 +64,7 @@ lwqueue<ebuffer*> *qfout   = NULL;
 std::vector<std::thread> fouts;
 VOID DSLIM_FOut_Thread_Entry();
 std::atomic<bool> exitSignal(false);
-#endif
+#endif // USE_MPI
 
 /* A queue containing I/O thread state when preempted */
 lwqueue<MSQuery *> *ioQ = NULL;
@@ -81,14 +81,17 @@ std::ostream& operator<<(std::ostream &out, const _heapEntry &c)
 }
 
 //
-// ----------------------------------------------------------------------------------
+// --------------------------Static functions -----------------------------------
 //
 
-/* Static function */
 static BOOL DSLIM_BinarySearch(Index *, float_t, int_t&, int_t&);
 static int_t  DSLIM_BinFindMin(pepEntry *entries, float_t pmass1, int_t min, int_t max);
 static int_t  DSLIM_BinFindMax(pepEntry *entries, float_t pmass2, int_t min, int_t max);
 static inline status_t DSLIM_Deinit_IO();
+
+//
+// ------------------------------------------------------------------------------
+//
 
 /* FUNCTION: DSLIM_WaitFor_IO
  *
@@ -122,7 +125,7 @@ static inline status_t DSLIM_WaitFor_IO(int_t &batchsize)
         // safety from a rare race condition
         if (!SchedHandle->getNumActivThds())
             SchedHandle->dispatchThread();
-        
+
         sleep(0.1);
 
         status = qPtrs->lockr_();
@@ -143,57 +146,6 @@ static inline status_t DSLIM_WaitFor_IO(int_t &batchsize)
 
     return status;
 }
-
-/* FUNCTION: DSLIM_SearchManager
- *
- * DESCRIPTION: Manages and performs the Peptide Search
- *
- * INPUT:
- * @slm_index : Pointer to the SLM_Index
- *
- * OUTPUT:
- * @status: Status of execution
- */
-static status_t DSLIM_InitializeMS2Data()
-{
-    status_t status = SLM_SUCCESS;
-
-    int_t nfiles = queryfiles.size();
-    ptrs = new MSQuery*[nfiles];
-
-    /* Initialize the queue with already created nfiles */
-    qfPtrs = new lwqueue<MSQuery*>(nfiles, false);
-
-#ifdef USE_OMP
-#pragma omp parallel for schedule (dynamic, 1)
-#endif/* _OPENMP */
-    for (auto fid = 0; fid < nfiles; fid++)
-    {
-        ptrs[fid] = new MSQuery;
-        ptrs[fid]->InitQueryFile(&queryfiles[fid], fid);
-    }
-
-    /* Push zeroth as is */
-    qfPtrs->push(ptrs[0]);
-    dssize += ptrs[0]->QAcount;
-
-    /* Update batch numbers */
-    for (auto fid = 1; fid < nfiles; fid++)
-    {
-        ptrs[fid]->curr_chunk = ptrs[fid - 1]->curr_chunk + ptrs[fid - 1]->nqchunks;
-        qfPtrs->push(ptrs[fid]);
-        dssize += ptrs[fid]->QAcount;
-    }
-
-    /* Compute the total number of batches in the dataset */
-    nBatches = ptrs[nfiles-1]->curr_chunk + ptrs[nfiles-1]->nqchunks;
-
-    if (params.myid == 0)
-        std::cout << "\nDataset Size = " << dssize << std::endl << std::endl;
-
-    return status;
-}
-
 
 /* FUNCTION: DSLIM_SearchManager
  *
@@ -233,7 +185,7 @@ status_t DSLIM_SearchManager(Index *index)
     {
         status = sem_init(&qfilelock, 0, 1);
 
-        status = DSLIM_InitializeMS2Data();
+        status = hcp::ms2::initialize(&qfPtrs, nBatches, dssize);
     }
 
     /* Initialize the lw double buffer queues with
@@ -539,9 +491,8 @@ status_t DSLIM_SearchManager(Index *index)
         ePtrs = NULL;
     }
 
-    /* Delete ptrs */
-    if (ptrs)
-        delete[] ptrs;
+    // deinitialize MS2 prep pointers
+    hcp::ms2::deinitialize();
 
     /* Return the status of execution */
     return status;
@@ -724,7 +675,7 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
 
                         /* Filter by the min shared peaks */
                         if (shpk >= params.min_shp)
-                        {                            
+                        {
                             /* Create a heap cell */
                             hCell cell;
 
@@ -1085,13 +1036,14 @@ VOID DSLIM_IO_Threads_Entry()
                 /* Otherwise, initialize the object from a file */
                 /* lock the query file */
                 sem_wait(&qfilelock);
-                /* Check if anymore queryfiles */
+
+                /* Check if anymore query file pointers */
                 if (!qfPtrs->isEmpty())
                 {
                     Query = qfPtrs->front();
                     qfPtrs->pop();
                     // Init to 1 for first loop to run
-                    rem_spec = Query->getQAcount(); 
+                    rem_spec = Query->getQAcount();
                 }
                 else
                 {
@@ -1118,7 +1070,7 @@ VOID DSLIM_IO_Threads_Entry()
 
         /* Empty wait queue or Scheduler preemption signal raised  */
         preempt = SchedHandle->checkPreempt();
-        
+
         if (qPtrs->isEmptyWaitQ() || preempt)
         {
             status = qPtrs->unlockw_();
@@ -1143,9 +1095,9 @@ VOID DSLIM_IO_Threads_Entry()
 
         /* Extract a chunk and return the chunksize */
         status = Query->ExtractQueryChunk(QCHUNK, ioPtr, rem_spec);
-        ioPtr->batchNum = Query->curr_chunk;
+        ioPtr->batchNum = Query->Curr_chunk();
         ioPtr->fileNum  = Query->getQfileIndex();
-        Query->curr_chunk++;
+        Query->Curr_chunk()++;
 
         /* Lock the ready queue */
         qPtrs->lockr_();
@@ -1180,7 +1132,6 @@ VOID DSLIM_IO_Threads_Entry()
 
     }
 
-
 #if defined (USE_TIMEMORY)
     prep_inst.stop();
 #endif // USE_TIMEMORY
@@ -1203,7 +1154,7 @@ VOID DSLIM_FOut_Thread_Entry()
         if (qfout->isEmpty())
         {
             sem_post(&qfoutlock);
-            
+
             if (exitSignal)
                 return;
 

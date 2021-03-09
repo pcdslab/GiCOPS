@@ -64,20 +64,21 @@ if __name__ == '__main__':
     tsv_files = glob.glob(data_dir + '/*.tsv')
     #print (tsv_files)
 
-
+    #
     # Extract TSV data
+    #
 
     # Matrix where the df will be collected
     matrix = []
 
     # Read all TSVs into data matrix
-    if (len(tsv_files) > 1):
+    if (len(tsv_files) > 0):
         for kk in tsv_files:
             print ('Loading File: ', kk)
             dat = pd.read_csv(kk, sep='\t', index_col=None, header=0)
             matrix.append(dat)
-            os.remove(kk)
-
+    else:
+        print ("No TSV files found in: ", data_dir)
 
     # Construct data frame
     print ("Constructing DataFrame...")
@@ -97,6 +98,12 @@ if __name__ == '__main__':
 
     # Write to Excel format
     frame.to_excel(output)
+
+    # remove TSV files
+    print ('Removing TSV files...')
+    if (len(tsv_files) > 0):
+        for kk in tsv_files:
+            os.remove(kk)
 
     # Print the output address
     print ('DONE: ', output)

@@ -51,19 +51,19 @@ private:
     /* Global Variables */
     uint_t currPtr;
     uint_t running_count;
-    uint_t maxslen;
+    uint_t maxslen;       // to be archived
+    uint_t nqchunks;      // to be archived
+    uint_t QAcount;       // to be archived
+    uint_t curr_chunk;    // to be archived
     std::ifstream *qfile;
     uint_t qfileIndex;
-    string_t *MS2file;
+    string_t MS2file;     // to be archived
     Spectrum spectrum;
 
     VOID ReadSpectrum();
     status_t ProcessQuerySpectrum(Queries *);
 
 public:
-    uint_t QAcount;
-    uint_t curr_chunk;
-    uint_t nqchunks;
 
     MSQuery();
     virtual ~MSQuery();
@@ -75,5 +75,8 @@ public:
     uint_t getQfileIndex();
     MSQuery &operator=(const MSQuery &rhs);
     MSQuery &operator=(const int_t &rhs);
+
+    uint_t& Curr_chunk();
+    uint_t& Nqchunks();
 
 };

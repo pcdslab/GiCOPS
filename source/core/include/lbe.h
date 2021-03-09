@@ -27,7 +27,7 @@
 #include "mods.h"
 #include "slmerr.h"
 #include "dslim.h"
-#include "msquery.h"
+#include "msquery.hpp"
 
 /*
  * FUNCTION: LBE_Initialize

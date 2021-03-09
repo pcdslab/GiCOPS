@@ -64,6 +64,7 @@ using LONG = long;
 using char_t = char;
 using VOID = void;
 using BOOL = bool;
+using bool_t = bool;
 using double_t = double;
 using string_t = std::string;
 

@@ -17,8 +17,7 @@
  *
  */
 
-#ifndef INCLUDE_UTILS_H_
-#define INCLUDE_UTILS_H_
+#pragma once
 
 #include <omp.h>
 #include <parallel/algorithm>
@@ -217,5 +216,3 @@ float_t UTILS_CalculateModMass(AA *, uint_t, uint_t);
  * @mass: Precursor mass of modified peptide
  */
 float_t UTILS_GenerateModSpectrum(char_t *, uint_t, uint_t *, modAA);
-
-#endif /* INCLUDE_UTILS_H_ */

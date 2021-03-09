@@ -182,3 +182,10 @@ add_subdirectory(source)
 
 message(STATUS "Adding hicops tools...")
 add_subdirectory(tools)
+
+#----------------------------------------------------------------------------------------#
+#   externals source
+#----------------------------------------------------------------------------------------#
+
+message(STATUS "Adding externals source...")
+add_subdirectory(external)

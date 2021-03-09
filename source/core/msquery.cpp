@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  */
-#include "msquery.h"
+#include "msquery.hpp"
 
 using namespace std;
 
@@ -28,7 +28,6 @@ MSQuery::MSQuery()
     currPtr = 0;
     QAcount = 0;
     maxslen = 0;
-    MS2file = new string_t;
     nqchunks = 0;
     curr_chunk = 0;
     running_count = 0;
@@ -49,12 +48,6 @@ MSQuery::~MSQuery()
     curr_chunk = 0;
     running_count = 0;
     maxslen = 0;
-
-    if (MS2file != NULL)
-    {
-        delete MS2file;
-        MS2file = NULL;
-    }
 
     if (qfile != NULL)
     {
@@ -156,7 +149,8 @@ status_t MSQuery::InitQueryFile(string_t *filename, int_t fno)
         {
             currPtr  = 0;
             QAcount = count;
-            *MS2file = *filename;
+            // FIXME: segfault here
+            MS2file = *filename;
             curr_chunk = 0;
             running_count = 0;
             nqchunks = std::ceil(((double) QAcount / QCHUNK));
@@ -173,6 +167,8 @@ status_t MSQuery::InitQueryFile(string_t *filename, int_t fno)
 
         delete qqfile;
     }
+    else
+        status = ERR_FILE_ERROR;
 
     /* Return the status */
     return status;
@@ -214,7 +210,7 @@ status_t MSQuery::ExtractQueryChunk(uint_t count, Queries *expSpecs, int_t &rem)
             status = ERR_INVLD_PARAM;
         }*/
 
-        qfile->open(MS2file->c_str());
+        qfile->open(MS2file.c_str());
     }
 
     /* Check if file opened */
@@ -228,13 +224,13 @@ status_t MSQuery::ExtractQueryChunk(uint_t count, Queries *expSpecs, int_t &rem)
     }
 
     //if (status == SLM_SUCCESS)
-    {
+    //{
         /* Update the runnning count */
         running_count += count;
 
         /* Set the number of remaining spectra count */
         rem = QAcount - running_count;
-    }
+    //}
 
     return status;
 }
@@ -524,3 +520,7 @@ MSQuery& MSQuery::operator=(const int_t &rhs)
 uint_t MSQuery::getQfileIndex() { return qfileIndex; }
 
 uint_t MSQuery::getQAcount() { return QAcount; }
+
+uint_t& MSQuery::Nqchunks() { return nqchunks; }
+
+uint_t& MSQuery::Curr_chunk() { return curr_chunk; }

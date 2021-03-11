@@ -402,6 +402,7 @@ status_t MSQuery::ProcessQuerySpectrum(Queries *expSpecs)
     int_t SpectrumSize = spectrum.SpectrumSize;
 
     expSpecs->precurse[currPtr - running_count] = spectrum.prec_mz;
+    expSpecs->charges[currPtr - running_count] = MAX(1, spectrum.Z);
 
     KeyVal_Parallel<uint_t, uint_t>(dIntArr, mzArray, (uint_t)SpectrumSize, 1);
 

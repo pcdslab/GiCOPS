@@ -425,6 +425,7 @@ typedef struct _queries
     uint_t  *intensity; /* Stores the intensity values of the experimental spectra */
     uint_t        *idx; /* Row ptr. Starting index of each row */
     float_t  *precurse; /* Stores the precursor mass of each spectrum. */
+    int_t     *charges;
     int_t     numPeaks;
     int_t     numSpecs; /* Number of theoretical spectra */
     int_t     batchNum;
@@ -444,6 +445,7 @@ typedef struct _queries
         this->idx       = NULL;
         this->precurse  = NULL;
         this->moz       = NULL;
+        this->charges   = NULL;
         this->intensity = NULL;
         numPeaks        = 0;
         numSpecs        = 0;
@@ -454,6 +456,7 @@ typedef struct _queries
     {
         this->idx       = new uint_t[QCHUNK + 1];
         this->precurse  = new float_t[QCHUNK];
+        this->charges   = new int_t[QCHUNK];
         this->moz       = new uint_t[QCHUNK * QALEN];
         this->intensity = new uint_t[QCHUNK * QALEN];
         fileNum         = 0;
@@ -488,6 +491,12 @@ typedef struct _queries
             this->precurse = NULL;
         }
 
+        if (this->charges != NULL)
+        {
+            delete[] this->charges;
+            this->charges = NULL;
+        }
+
         if (this->idx != NULL)
         {
             delete[] this->idx;
@@ -518,6 +527,12 @@ typedef struct _queries
         {
             delete[] this->precurse;
             this->precurse = NULL;
+        }
+
+        if (this->charges != NULL)
+        {
+            delete[] this->charges;
+            this->charges = NULL;
         }
 
         if (this->idx != NULL)

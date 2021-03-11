@@ -620,6 +620,7 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
             /* Pointer to each query spectrum */
             uint_t *QAPtr = ss->moz + ss->idx[queries];
             float_t pmass = ss->precurse[queries];
+            auto    pchg  = ss->charges[queries];
             uint_t *iPtr = ss->intensity + ss->idx[queries];
             uint_t qspeclen = ss->idx[queries + 1] - ss->idx[queries];
             uint_t thno = omp_get_thread_num();
@@ -638,6 +639,7 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
             {
                 uint_t speclen = (index[ixx].pepIndex.peplen - 1) * maxz * iSERIES;
                 uint_t halfspeclen = speclen / 2;
+                //uint_t sixthspeclen = speclen / 6;
 
                 for (uint_t chno = 0; chno < index[ixx].nChunks; chno++)
                 {
@@ -696,7 +698,10 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
                                     int_t isY = residue / halfspeclen;
                                     int_t isB = 1 - isY;
 
-                                    while (isY < 0 || isY > 1);
+                                    //int_t ichg = residue / sixthspeclen;
+
+                                    //isY *= residue && (ichg < (pchg + params.maxz));
+                                    //isB *= residue && (ichg < pchg);
 
                                     /* Get the map element */
                                     BYC *elmnt = bycPtr + ppid;
@@ -728,13 +733,11 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
                             /* Create a heap cell */
                             hCell cell;
 
-                            ull_t pp = UTILS_Factorial(bcc) *
-                                    UTILS_Factorial(ycc);
+                            double_t pp = log10(UTILS_Factorial(bcc)) + 
+                                    log10(UTILS_Factorial(ycc));
 
                             /* Fill in the information */
-                            cell.hyperscore = 0.001 + pp * bycPtr[it].ibc * bycPtr[it].iyc;
-
-                            cell.hyperscore = log10(cell.hyperscore) - 6;
+                            cell.hyperscore = pp + log10(1 + (ull_t)bycPtr[it].ibc) + log10(1 + (ull_t)bycPtr[it].iyc) - 6;
 
                             /* hyperscore < 0 means either b- or y- ions were not matched */
                             if (cell.hyperscore > 0)

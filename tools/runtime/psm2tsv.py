@@ -32,13 +32,15 @@ import pandas as pd
 # The main function
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Merge partial TSV files into XLSX')
+    parser = argparse.ArgumentParser(description='Merge partial TSV files')
+
     parser.add_argument('-i', '--idir', dest='data_dir', type=str, required=True,
                         help='Path to partial TSV files')
 
     parser.add_argument('-o', '--ofile', dest='ofile', type=str, required=False, 
-                        help='Path to Output file (default: idir/Results.xlsx')
+                        help='Path to Output file (default: idir/results.tsv')
 
+    # parse args
     args = parser.parse_args()
 
     # get the data directory
@@ -50,7 +52,7 @@ if __name__ == '__main__':
     if args.ofile is not None:
         output = args.ofile.lstrip(' ')
     else:
-        output = data_dir + '/Results.xlsx'
+        output = data_dir + '/results.tsv'
 
     # Open the TSV files
     data_dir = os.path.expanduser(data_dir)
@@ -73,9 +75,12 @@ if __name__ == '__main__':
     # Read all TSVs into data matrix
     if (len(tsv_files) > 1):
         for kk in tsv_files:
-            print ('Loading File: ', kk)
-            dat = pd.read_csv(kk, sep='\t', index_col=None, header=0)
-            matrix.append(dat)
+            if kk == 'results.tsv':
+                continue
+            else:
+                print ('Loading File: ', kk)
+                dat = pd.read_csv(kk, sep='\t', index_col=None, header=0)
+                matrix.append(dat)
 
 
     # Construct data frame
@@ -92,15 +97,18 @@ if __name__ == '__main__':
     #    print(frame.shape)
 
     # Write to Excel file
-    print ('Writing to Excel...')
+    print ('Writing TSV...')
 
-    # Write to Excel format
-    frame.to_excel(output)
+    # Write the TSV file
+    frame.to_csv(output, sep = '\t')
 
     # Delete all partial TSVs
     if (len(tsv_files) > 1):
         for kk in tsv_files:
-            os.remove(kk)
+            if kk == 'results.tsv':
+                continue
+            else:
+                os.remove(kk)
 
     # Print the output address
     print ('DONE: ', output)

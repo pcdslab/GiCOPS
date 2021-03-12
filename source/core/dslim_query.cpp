@@ -621,6 +621,7 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
             uint_t *QAPtr = ss->moz + ss->idx[queries];
             float_t pmass = ss->precurse[queries];
             auto    pchg  = ss->charges[queries];
+            auto    rtime = ss->rtimes[queries];
             uint_t *iPtr = ss->intensity + ss->idx[queries];
             uint_t qspeclen = ss->idx[queries + 1] - ss->idx[queries];
             uint_t thno = omp_get_thread_num();
@@ -747,6 +748,8 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
                                 cell.sharedions = shpk;
                                 cell.totalions = speclen;
                                 cell.pmass = pmass;
+                                cell.pchg = pchg;
+                                cell.rtime = rtime;
                                 cell.fileIndex = ss->fileNum;
 
                                 /* Insert the cell in the heap dst */

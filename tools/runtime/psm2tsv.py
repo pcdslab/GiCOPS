@@ -23,9 +23,9 @@
 import os
 import sys
 import glob
+import time
 import argparse
 import pandas as pd
-
 
 # Sanity Checking
 
@@ -75,8 +75,10 @@ if __name__ == '__main__':
     # Read all TSVs into data matrix
     if (len(tsv_files) > 1):
         for kk in tsv_files:
-            if kk == 'results.tsv':
-                continue
+            if kk.find('results') != -1:
+                t = time.localtime()
+                current_time = time.strftime("%H.%M.%S", t)
+                output = data_dir + '/results.' + current_time + '.tsv'
             else:
                 print ('Loading File: ', kk)
                 dat = pd.read_csv(kk, sep='\t', index_col=None, header=0)
@@ -97,7 +99,7 @@ if __name__ == '__main__':
     #    print(frame.shape)
 
     # Write to Excel file
-    print ('Writing TSV...')
+    print ('Writing concatenated TSV...')
 
     # Write the TSV file
     frame.to_csv(output, sep = '\t')
@@ -105,7 +107,7 @@ if __name__ == '__main__':
     # Delete all partial TSVs
     if (len(tsv_files) > 1):
         for kk in tsv_files:
-            if kk == 'results.tsv':
+            if kk.find('results') != -1:
                 continue
             else:
                 os.remove(kk)

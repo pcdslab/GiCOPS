@@ -640,7 +640,9 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
             {
                 uint_t speclen = (index[ixx].pepIndex.peplen - 1) * maxz * iSERIES;
                 uint_t halfspeclen = speclen / 2;
-                //uint_t sixthspeclen = speclen / 6;
+#ifdef MATCH_CHARGE
+                uint_t sixthspeclen = speclen / 6;
+#endif // MATCH_CHARGE
 
                 for (uint_t chno = 0; chno < index[ixx].nChunks; chno++)
                 {
@@ -699,11 +701,12 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
                                     int_t isY = residue / halfspeclen;
                                     int_t isB = 1 - isY;
 
-                                    //int_t ichg = residue / sixthspeclen;
+#ifdef MATCH_CHARGE
+                                    int_t ichg = residue / sixthspeclen;
 
-                                    //isY *= residue && (ichg < (pchg + params.maxz));
-                                    //isB *= residue && (ichg < pchg);
-
+                                    isY *= residue && (ichg < (pchg + params.maxz));
+                                    isB *= residue && (ichg < pchg);
+#endif // MATCH_CHARGE
                                     /* Get the map element */
                                     BYC *elmnt = bycPtr + ppid;
 

@@ -138,6 +138,7 @@ message(STATUS "Configuring...")
 
 option(TAILFIT "Use Tailfit method instead of Gumbelfit for e(x)" ON)
 option(PROGRESS "Enable Progress Marks" ON)
+option(MATCH_CHARGE "Ensure precursor charge - 1 in fragment-ion search" OFF)
 
 # Allowed maximum peptide sequence length
 if (NOT MAX_SEQ_LEN)

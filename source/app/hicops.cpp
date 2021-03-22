@@ -600,9 +600,9 @@ static status_t ParseParams(char_t* paramfile)
         getline(pfile, line);
         params.min_cpsm = std::atoi(line.c_str());
 
-        /* Base Intensity */
+        /* Base Intensity x 1000 */
         getline(pfile, line);
-        params.base_int = std::atoi(line.c_str());
+        params.base_int = std::atoi(line.c_str()) * 1000;
 
         /* Cutoff intensity ratio */
         getline(pfile, line);

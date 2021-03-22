@@ -36,6 +36,10 @@
 // Print progress marks
 #cmakedefine PROGRESS
 
+// match fragment-ions to only the database ions with charge = precursor charge - 1
+// also do not match to the b1 ions that have low probability of generation.
+#cmakedefine MATCH_CHARGE
+
 // maximum peptide sequence length in the database: max 62 allowed
 #cmakedefine MAX_SEQ_LEN              @MAX_SEQ_LEN@
 

@@ -37,6 +37,7 @@ MSQuery::MSQuery()
     spectrum.SpectrumSize = 0;
     spectrum.prec_mz = 0;
     spectrum.Z = 0;
+    spectrum.rtime = 0;
 }
 
 MSQuery::~MSQuery()
@@ -70,6 +71,7 @@ MSQuery::~MSQuery()
     spectrum.SpectrumSize = 0;
     spectrum.prec_mz = 0;
     spectrum.Z = 0;
+    spectrum.rtime = 0;
 }
 
 /*
@@ -240,6 +242,7 @@ VOID MSQuery::ReadSpectrum()
     string_t line;
     uint_t speclen = 0;
     char_t *saveptr;
+    char_t *Isave;
 
     /* Check if this is the first spectrum in file */
     if (currPtr == 0)
@@ -252,8 +255,7 @@ VOID MSQuery::ReadSpectrum()
             getline(*qfile, line);
 
             /* Empty line */
-            if (line.empty() || line[0] == 'H' || line[0] == 'I' ||
-                line[0] == 'D')
+            if (line.empty() || line[0] == 'H' || line[0] == 'D')
             {
                 continue;
             }
@@ -266,8 +268,9 @@ VOID MSQuery::ReadSpectrum()
                 if (mh != NULL)
                 {
                     val = string_t(mh);
-                    spectrum.Z = std::atoi(val.c_str());
                 }
+
+                spectrum.Z = std::atoi(val.c_str());
 
                 val = "0.01";
                 mh = strtok_r(NULL, " \t", &saveptr);
@@ -275,7 +278,33 @@ VOID MSQuery::ReadSpectrum()
                 if (mh != NULL)
                 {
                     val = string_t(mh);
-                    spectrum.prec_mz = (double_t)std::atof(val.c_str());
+                }
+
+                spectrum.prec_mz = (double_t)std::atof(val.c_str());
+
+            }
+            else if (line[0] == 'I')
+            {
+                char_t *mh = strtok_r((char_t *) line.c_str(), " \t", &Isave);
+                mh = strtok_r(NULL, " \t", &Isave);
+                string_t val = "";
+
+                if (mh != NULL)
+                {
+                    val = string_t(mh);
+                }
+
+                if (val.compare("RTime") == 0)
+                {
+                    val = "0.00";
+                    mh = strtok_r(NULL, " \t", &Isave);
+
+                    if (mh != NULL)
+                    {
+                        val = string_t(mh);
+                    }
+
+                    spectrum.rtime = (double_t)std::atof(val.c_str());
                 }
             }
             else if (line[0] == 'S')
@@ -329,12 +358,11 @@ VOID MSQuery::ReadSpectrum()
             getline(*qfile, line);
 
             /* Empty line */
-            if (line.empty() || line[0] == 'H' || line[0] == 'I' ||
-                line[0] == 'D')
+            if (line.empty() || line[0] == 'H' || line[0] == 'D')
             {
                 continue;
             }
-            else if ( line[0] == 'Z')
+            else if (line[0] == 'Z')
             {
                 char_t *mh = strtok_r((char_t *) line.c_str(), " \t", &saveptr);
                 mh = strtok_r(NULL, " \t", &saveptr);
@@ -343,8 +371,9 @@ VOID MSQuery::ReadSpectrum()
                 if (mh != NULL)
                 {
                     val = string_t(mh);
-                    spectrum.Z = std::atoi(val.c_str());
                 }
+
+                spectrum.Z = std::atoi(val.c_str());
 
                 val = "0.01";
                 mh = strtok_r(NULL, " \t", &saveptr);
@@ -352,7 +381,33 @@ VOID MSQuery::ReadSpectrum()
                 if (mh != NULL)
                 {
                     val = string_t(mh);
-                    spectrum.prec_mz = (double_t)std::atof(val.c_str());
+                }
+
+                spectrum.prec_mz = (double_t)std::atof(val.c_str());
+
+            }
+            else if (line[0] == 'I')
+            {
+                char_t *mh = strtok_r((char_t *) line.c_str(), " \t", &Isave);
+                mh = strtok_r(NULL, " \t", &Isave);
+                string_t val = "";
+
+                if (mh != NULL)
+                {
+                    val = string_t(mh);
+                }
+
+                if (val.compare("RTime") == 0)
+                {
+                    val = "0.00";
+                    mh = strtok_r(NULL, " \t", &Isave);
+
+                    if (mh != NULL)
+                    {
+                        val = string_t(mh);
+                    }
+
+                    spectrum.rtime = (double_t)std::atof(val.c_str());
                 }
             }
             else if (line[0] == 'S')
@@ -398,6 +453,8 @@ status_t MSQuery::ProcessQuerySpectrum(Queries *expSpecs)
     int_t SpectrumSize = spectrum.SpectrumSize;
 
     expSpecs->precurse[currPtr - running_count] = spectrum.prec_mz;
+    expSpecs->charges[currPtr - running_count] = MAX(1, spectrum.Z);
+    expSpecs->rtimes[currPtr - running_count] = MAX(0.0, spectrum.rtime);
 
     KeyVal_Parallel<uint_t, uint_t>(dIntArr, mzArray, (uint_t)SpectrumSize, 1);
 
@@ -412,12 +469,14 @@ status_t MSQuery::ProcessQuerySpectrum(Queries *expSpecs)
         dIntArr[SpectrumSize - 1] = params.base_int;
         speclen = 1;
 
+        uint_t l_min_int = params.min_int; //0.01 * dIntArr[SpectrumSize - 1];
+
         /* Scale the rest of the peaks to the base peak */
         for (int_t j = SpectrumSize - 2; j >= (SpectrumSize - QALEN) && j >= 0; j--)
         {
             dIntArr[j] *= factor;
 
-            if (dIntArr[j] >= (uint_t) params.min_int)
+            if (dIntArr[j] >= l_min_int)
             {
                 speclen++;
             }
@@ -481,6 +540,8 @@ status_t MSQuery::DeinitQueryFile()
 
     spectrum.SpectrumSize = 0;
     spectrum.prec_mz = 0;
+    spectrum.Z = 0;
+    spectrum.rtime = 0;
 
     return SLM_SUCCESS;
 }

@@ -31,6 +31,7 @@ typedef struct _Spectrum
     uint_t SpectrumSize;
     double_t prec_mz;
     uint_t Z;
+    double_t rtime;
 
     /* Overload the = operator - Required by MSQuery */
     _Spectrum &operator=(const _Spectrum &rhs)
@@ -40,6 +41,7 @@ typedef struct _Spectrum
         this->SpectrumSize = rhs.SpectrumSize;
         this->prec_mz = rhs.prec_mz;
         this->Z = rhs.Z;
+        this->rtime = rhs.rtime;
 
         return *this;
     }

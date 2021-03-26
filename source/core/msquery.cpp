@@ -33,11 +33,13 @@ MSQuery::MSQuery()
     running_count = 0;
     spectrum.intn = NULL;
     qfileIndex = 0;
+    m_isinit = false;
     spectrum.mz = NULL;
     spectrum.SpectrumSize = 0;
     spectrum.prec_mz = 0;
     spectrum.Z = 0;
     spectrum.rtime = 0;
+
 }
 
 MSQuery::~MSQuery()
@@ -46,6 +48,7 @@ MSQuery::~MSQuery()
     qfileIndex = 0;
     curr_chunk = 0;
     running_count = 0;
+    m_isinit = false;
 
     if (qfile != NULL)
     {
@@ -158,6 +161,8 @@ status_t MSQuery::initialize(string_t *filename, int_t fno)
             /* Initialize to largest spectrum in file */
             spectrum.intn = new uint_t[info.maxslen + 1];
             spectrum.mz = new uint_t[info.maxslen + 1];
+
+            m_isinit = true;
         }
 
         /* Close the file */
@@ -170,6 +175,26 @@ status_t MSQuery::initialize(string_t *filename, int_t fno)
 
     /* Return the status */
     return status;
+}
+
+//
+// info initialized at remote process, initialize rest here
+//
+void MSQuery::vinitialize(string_t *filename, int_t fno)
+{
+    // reset these variables
+    currPtr  = 0;
+    curr_chunk = 0;
+    running_count = 0;
+
+    // set the file information
+    MS2file = *filename;
+    qfileIndex = fno;
+
+    // init to the largest spectrum in file
+    spectrum.intn = new uint_t[info.maxslen + 1];
+    spectrum.mz = new uint_t[info.maxslen + 1];
+    m_isinit = true;
 }
 
 status_t MSQuery::init_index()
@@ -622,3 +647,5 @@ uint_t& MSQuery::Nqchunks() { return info.nqchunks; }
 uint_t& MSQuery::Curr_chunk() { return curr_chunk; }
 
 info_t& MSQuery::Info() { return info; }
+
+bool_t MSQuery::isinit() { return m_isinit; }

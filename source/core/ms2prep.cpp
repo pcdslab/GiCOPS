@@ -78,9 +78,6 @@ status_t synchronize()
 {
     status_t status = SLM_SUCCESS;
 
-    // get ptrs
-    MSQuery **ptrs = get_instance();
-
     // synchronize
     status = hcp::mpi::barrier();
 
@@ -149,7 +146,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
             for (auto fid = 0; fid < pfiles; fid++)
             {
                 auto loc_fid = ms2local[fid];
-                ptrs[loc_fid]->initialize(&queryfiles[loc_fid], fid);
+                ptrs[loc_fid]->initialize(&queryfiles[loc_fid], loc_fid);
 
                 // archive the index variables
                 ptrs[loc_fid]->archive(loc_fid);
@@ -166,10 +163,17 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
 
             MSQuery::read_index(findex, nfiles);
 
-            // copy data back from the index
+            // copy global data from the index
             for (auto fid = 0; fid < nfiles; fid ++)
-                ptrs[fid]->Info() = findex[fid];
-            
+            {
+                // use the index information to
+                // initialize the remaining index
+                if (!ptrs[fid]->isinit())
+                {
+                    ptrs[fid]->Info() = findex[fid];
+                    ptrs[fid]->vinitialize(&queryfiles[fid], fid);
+                }
+            }
             delete[] findex;
         }
 

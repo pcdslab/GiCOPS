@@ -82,6 +82,7 @@ private:
     uint_t qfileIndex;
     string_t MS2file;
     spectrum_t spectrum;
+    bool_t m_isinit;
 
     VOID readspectrum();
     status_t pickpeaks(Queries *);
@@ -91,20 +92,23 @@ public:
     MSQuery();
     virtual ~MSQuery();
     uint_t getQAcount();
-    status_t initialize(string_t *filename, int_t fno);
+    status_t initialize(string_t *, int_t);
+    void vinitialize(string_t *, int_t);
     static status_t init_index();
     static status_t write_index();
     static status_t read_index(info_t *, int);
     status_t archive(int_t);
-    status_t extractbatch(uint_t count, Queries *expSpecs, int_t &rem);
+    status_t extractbatch(uint_t, Queries *, int_t &);
     status_t DeinitQueryFile();
     BOOL isDeInit();
     uint_t getQfileIndex();
-    MSQuery &operator=(const MSQuery &rhs);
-    MSQuery &operator=(const int_t &rhs);
+    MSQuery &operator=(const MSQuery &);
+    MSQuery &operator=(const int_t &);
 
     uint_t& Curr_chunk();
     uint_t& Nqchunks();
     info_t& Info();
+
+    bool_t isinit();
 
 };

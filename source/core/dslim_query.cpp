@@ -523,6 +523,9 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
     ebuffer *liBuff = NULL;
     partRes *txArray = NULL;
 
+    // static instance of the log(factorial(x)) array
+    static auto lgfact = hcp::utils::lgfact<hcp::utils::maxshp>();
+
     if (params.nodes > 1)
     {
         liBuff = new ebuffer;
@@ -577,7 +580,7 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
             uint_t qspeclen = ss->idx[queries + 1] - ss->idx[queries];
             uint_t thno = omp_get_thread_num();
 
-            BYC *bycPtr = Score[thno].byc;
+            BYC *bycPtr     = Score[thno].byc;
             Results *resPtr = &Score[thno].res;
             expeRT  *expPtr = ePtrs + thno;
             ebuffer *inBuff = inBuff + thno;
@@ -688,11 +691,11 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
                             /* Create a heap cell */
                             hCell cell;
 
-                            double_t pp = log10(UTILS_Factorial(bcc)) + 
-                                    log10(UTILS_Factorial(ycc));
+                            // get the precomputed log(factorial(x))
+                            double_t h1 = lgfact[bcc] + lgfact[ycc];
 
                             /* Fill in the information */
-                            cell.hyperscore = pp + log10(1 + (ull_t)bycPtr[it].ibc) + log10(1 + (ull_t)bycPtr[it].iyc) - 6;
+                            cell.hyperscore = h1 + log10(1 + bycPtr[it].ibc) + log10(1 + bycPtr[it].iyc) - 6;
 
                             /* hyperscore < 0 means either b- or y- ions were not matched */
                             if (cell.hyperscore > 0)
@@ -1103,7 +1106,7 @@ VOID DSLIM_IO_Threads_Entry()
         ioPtr->reset();
 
         /* Extract a chunk and return the chunksize */
-        status = Query->ExtractQueryChunk(QCHUNK, ioPtr, rem_spec);
+        status = Query->extractbatch(QCHUNK, ioPtr, rem_spec);
         ioPtr->batchNum = Query->Curr_chunk();
         ioPtr->fileNum  = Query->getQfileIndex();
         Query->Curr_chunk()++;

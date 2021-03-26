@@ -24,7 +24,7 @@
 #include "utils.h"
 
 /* Spectrum */
-typedef struct _Spectrum
+struct _Spectrum
 {
     uint_t *mz;
     uint_t *intn;
@@ -45,7 +45,30 @@ typedef struct _Spectrum
 
         return *this;
     }
-} Spectrum;
+} ;
+
+struct _info
+{
+    uint_t maxslen;       // to be archived
+    uint_t nqchunks;      // to be archived
+    uint_t QAcount;       // to be archived
+
+    _info() = default;
+    ~_info() = default;
+
+    /* Overload the = operator */
+    _info &operator=(const _info &rhs)
+    {
+        this->maxslen = rhs.maxslen;
+        this->nqchunks = rhs.nqchunks;
+        this->QAcount = rhs.QAcount;
+
+        return *this;
+    }
+};
+
+using info_t = _info;
+using spectrum_t = _Spectrum;
 
 class MSQuery
 {
@@ -53,25 +76,27 @@ private:
     /* Global Variables */
     uint_t currPtr;
     uint_t running_count;
-    uint_t maxslen;       // to be archived
-    uint_t nqchunks;      // to be archived
-    uint_t QAcount;       // to be archived
-    uint_t curr_chunk;    // to be archived
+    uint_t curr_chunk;
+    info_t info;
     std::ifstream *qfile;
     uint_t qfileIndex;
-    string_t MS2file;     // to be archived
-    Spectrum spectrum;
+    string_t MS2file;
+    spectrum_t spectrum;
 
-    VOID ReadSpectrum();
-    status_t ProcessQuerySpectrum(Queries *);
+    VOID readspectrum();
+    status_t pickpeaks(Queries *);
 
 public:
 
     MSQuery();
     virtual ~MSQuery();
     uint_t getQAcount();
-    status_t InitQueryFile(string_t *filename, int_t fno);
-    status_t ExtractQueryChunk(uint_t count, Queries *expSpecs, int_t &rem);
+    status_t initialize(string_t *filename, int_t fno);
+    static status_t init_index();
+    static status_t write_index();
+    static status_t read_index(info_t *, int);
+    status_t archive(int_t);
+    status_t extractbatch(uint_t count, Queries *expSpecs, int_t &rem);
     status_t DeinitQueryFile();
     BOOL isDeInit();
     uint_t getQfileIndex();
@@ -80,5 +105,6 @@ public:
 
     uint_t& Curr_chunk();
     uint_t& Nqchunks();
+    info_t& Info();
 
 };

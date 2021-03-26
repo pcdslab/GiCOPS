@@ -22,13 +22,13 @@ using namespace std;
 
 extern gParams params;
 
+MPI_Datatype MPI_info;
+MPI_File fh;
+
 MSQuery::MSQuery()
 {
     qfile = NULL;
     currPtr = 0;
-    QAcount = 0;
-    maxslen = 0;
-    nqchunks = 0;
     curr_chunk = 0;
     running_count = 0;
     spectrum.intn = NULL;
@@ -43,12 +43,9 @@ MSQuery::MSQuery()
 MSQuery::~MSQuery()
 {
     currPtr = 0;
-    QAcount = 0;
-    nqchunks = 0;
     qfileIndex = 0;
     curr_chunk = 0;
     running_count = 0;
-    maxslen = 0;
 
     if (qfile != NULL)
     {
@@ -75,7 +72,7 @@ MSQuery::~MSQuery()
 }
 
 /*
- * FUNCTION: MSQuery_InitializeQueryFile
+ * FUNCTION:
  *
  * DESCRIPTION: Initialize structures using the query file
  *
@@ -85,7 +82,7 @@ MSQuery::~MSQuery()
  * OUTPUT:
  * @status: Status of execution
  */
-status_t MSQuery::InitQueryFile(string_t *filename, int_t fno)
+status_t MSQuery::initialize(string_t *filename, int_t fno)
 {
     status_t status = SLM_SUCCESS;
 
@@ -103,7 +100,7 @@ status_t MSQuery::InitQueryFile(string_t *filename, int_t fno)
     }*/
 
     /* Check if file opened */
-    if (qqfile->is_open() /*&& status == SLM_SUCCESS*/)
+    if (qqfile->is_open() /*&& status =SLM_SUCCESS*/)
     {
         string_t line;
 
@@ -150,18 +147,17 @@ status_t MSQuery::InitQueryFile(string_t *filename, int_t fno)
         if (status == SLM_SUCCESS)
         {
             currPtr  = 0;
-            QAcount = count;
-            // FIXME: segfault here
+            info.QAcount = count;
             MS2file = *filename;
             curr_chunk = 0;
             running_count = 0;
-            nqchunks = std::ceil(((double) QAcount / QCHUNK));
+            info.nqchunks = std::ceil(((double) info.QAcount / QCHUNK));
             qfileIndex = fno;
-            maxslen = max(specsize, largestspec);
+            info.maxslen = max(specsize, largestspec);
 
             /* Initialize to largest spectrum in file */
-            spectrum.intn = new uint_t[maxslen + 1];
-            spectrum.mz = new uint_t[maxslen + 1];
+            spectrum.intn = new uint_t[info.maxslen + 1];
+            spectrum.mz = new uint_t[info.maxslen + 1];
         }
 
         /* Close the file */
@@ -176,7 +172,46 @@ status_t MSQuery::InitQueryFile(string_t *filename, int_t fno)
     return status;
 }
 
-status_t MSQuery::ExtractQueryChunk(uint_t count, Queries *expSpecs, int_t &rem)
+status_t MSQuery::init_index()
+{
+    string fname = params.datapath + "/summary.io";
+
+    // create a MPI data type
+    MPI_Type_contiguous((int_t)(sizeof(info_t) / sizeof(int_t)),
+                        MPI_INT,
+                        &MPI_info);
+
+    MPI_Type_commit(&MPI_info);
+
+    // open the file
+    status_t err = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), (MPI_MODE_CREATE | MPI_MODE_WRONLY), MPI_INFO_NULL, &fh);
+
+    return err;
+}
+
+status_t MSQuery::write_index() { return MPI_File_close(&fh); }
+
+status_t MSQuery::read_index(info_t *findex, int_t size)
+{
+    // file name
+    string fname = params.datapath + "/summary.io";
+    MPI_File fh2;
+
+    // open the file
+    status_t status = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh2);
+
+    // read the index
+    status = MPI_File_read_all(fh2, findex, size, MPI_info, MPI_STATUS_IGNORE);
+
+    // close the file
+    MPI_File_close(&fh2);
+
+    return status;
+}
+
+status_t MSQuery::archive(int_t index) { return MPI_File_write_at(fh, sizeof(info_t)*(index), &info, 1, MPI_info, MPI_STATUS_IGNORE); }
+
+status_t MSQuery::extractbatch(uint_t count, Queries *expSpecs, int_t &rem)
 {
     status_t status = SLM_SUCCESS;
 
@@ -191,9 +226,9 @@ status_t MSQuery::ExtractQueryChunk(uint_t count, Queries *expSpecs, int_t &rem)
 
     if (status == SLM_SUCCESS) */
     {
-        if (endspec > QAcount)
+        if (endspec > info.QAcount)
         {
-            endspec = QAcount;
+            endspec = info.QAcount;
             count = endspec - startspec;
         }
     }
@@ -216,12 +251,12 @@ status_t MSQuery::ExtractQueryChunk(uint_t count, Queries *expSpecs, int_t &rem)
     }
 
     /* Check if file opened */
-    if (qfile->is_open() /*&& status == SLM_SUCCESS*/)
+    if (qfile->is_open() /*&& status =SLM_SUCCESS*/)
     {
         for (uint_t spec = startspec; spec < endspec; spec++)
         {
-            ReadSpectrum();
-            status = ProcessQuerySpectrum(expSpecs);
+            readspectrum();
+            status = pickpeaks(expSpecs);
         }
     }
 
@@ -231,13 +266,13 @@ status_t MSQuery::ExtractQueryChunk(uint_t count, Queries *expSpecs, int_t &rem)
         running_count += count;
 
         /* Set the number of remaining spectra count */
-        rem = QAcount - running_count;
+        rem = info.QAcount - running_count;
     //}
 
     return status;
 }
 
-VOID MSQuery::ReadSpectrum()
+VOID MSQuery::readspectrum()
 {
     string_t line;
     uint_t speclen = 0;
@@ -446,7 +481,7 @@ VOID MSQuery::ReadSpectrum()
     }
 }
 
-status_t MSQuery::ProcessQuerySpectrum(Queries *expSpecs)
+status_t MSQuery::pickpeaks(Queries *expSpecs)
 {
     uint_t *dIntArr = spectrum.intn;
     uint_t *mzArray = spectrum.mz;
@@ -511,12 +546,12 @@ status_t MSQuery::ProcessQuerySpectrum(Queries *expSpecs)
 status_t MSQuery::DeinitQueryFile()
 {
     currPtr = 0;
-    QAcount = 0;
-    nqchunks = 0;
+    info.QAcount = 0;
+    info.nqchunks = 0;
     curr_chunk = 0;
     running_count = 0;
     qfileIndex = 0;
-    maxslen = 0;
+    info.maxslen = 0;
 
     if (qfile != NULL)
     {
@@ -546,17 +581,17 @@ status_t MSQuery::DeinitQueryFile()
     return SLM_SUCCESS;
 }
 
-BOOL MSQuery::isDeInit() { return ((qfile == NULL) && (QAcount == 0)); }
+BOOL MSQuery::isDeInit() { return ((qfile == NULL) && (info.QAcount == 0)); }
 
 /* Operator Overload - To copy to and from the work queue */
 MSQuery& MSQuery::operator=(const MSQuery &rhs)
 {
     this->MS2file = rhs.MS2file;
-    this->QAcount = rhs.QAcount;
+    this->info.QAcount = rhs.info.QAcount;
     this->currPtr = rhs.currPtr;
     this->curr_chunk = rhs.curr_chunk;
-    this->maxslen = rhs.maxslen;
-    this->nqchunks = rhs.nqchunks;
+    this->info.maxslen = rhs.info.maxslen;
+    this->info.nqchunks = rhs.info.nqchunks;
     this->qfile = rhs.qfile;
     this->running_count = rhs.running_count;
     this->spectrum = rhs.spectrum;
@@ -567,11 +602,11 @@ MSQuery& MSQuery::operator=(const MSQuery &rhs)
 
 MSQuery& MSQuery::operator=(const int_t &rhs)
 {
-    this->QAcount = rhs;
+    this->info.QAcount = rhs;
     this->currPtr = rhs;
     this->curr_chunk = rhs;
-    this->maxslen = rhs;
-    this->nqchunks = rhs;
+    this->info.maxslen = rhs;
+    this->info.nqchunks = rhs;
     this->running_count = rhs;
     this->qfileIndex = rhs;
 
@@ -580,8 +615,10 @@ MSQuery& MSQuery::operator=(const int_t &rhs)
 
 uint_t MSQuery::getQfileIndex() { return qfileIndex; }
 
-uint_t MSQuery::getQAcount() { return QAcount; }
+uint_t MSQuery::getQAcount() { return info.QAcount; }
 
-uint_t& MSQuery::Nqchunks() { return nqchunks; }
+uint_t& MSQuery::Nqchunks() { return info.nqchunks; }
 
 uint_t& MSQuery::Curr_chunk() { return curr_chunk; }
+
+info_t& MSQuery::Info() { return info; }

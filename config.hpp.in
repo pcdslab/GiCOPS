@@ -20,20 +20,20 @@
 
 #pragma once
 
-// Use MPI based build
+// use MPI based build
 #cmakedefine USE_MPI
 
-// Enable Timemory based instrumentation
+// enable Timemory based instrumentation
 #cmakedefine USE_TIMEMORY
 
-// Enable MPIP instrumentation via Timemory
+// enable MPIP instrumentation via Timemory
 #cmakedefine USE_MPIP_LIBRARY
 
-// Use the Tail-fit method for expect score computations
-// If undefined then gumbel distribution fit method will be used
+// use the Tail-fit method for expect score computations
+// if undefined then gumbel distribution fit method will be used
 #cmakedefine TAILFIT
 
-// Print progress marks
+// print progress marks
 #cmakedefine PROGRESS
 
 // match fragment-ions to only the database ions with charge = precursor charge - 1
@@ -43,11 +43,14 @@
 // maximum peptide sequence length in the database: max 62 allowed
 #cmakedefine MAX_SEQ_LEN              @MAX_SEQ_LEN@
 
-// Number of fragments (peaks) per query spectrum */
+// maximum fragments (peaks) per query spectrum */
 #cmakedefine QALEN                    @QALEN@
 
-// How many query spectra per batch
+// maximum query spectra per batch
 #cmakedefine QCHUNK                   @QCHUNK@
 
-// Maximum hyperscore that is possible
+// maximum hyperscore that is possible
 #cmakedefine MAX_HYPERSCORE           @MAX_HYPERSCORE@
+
+// maximum possible shared b- or y-ions
+#cmakedefine MAX_SHDPEAKS             @MAX_SHDPEAKS@

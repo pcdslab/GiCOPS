@@ -140,24 +140,29 @@ option(TAILFIT "Use Tailfit method instead of Gumbelfit for e(x)" ON)
 option(PROGRESS "Enable Progress Marks" ON)
 option(MATCH_CHARGE "Ensure precursor charge - 1 in fragment-ion search" OFF)
 
-# Allowed maximum peptide sequence length
+# maximum peptide sequence length
 if (NOT MAX_SEQ_LEN)
     set(MAX_SEQ_LEN   60)
 endif()
 
-# Maximum top k peaks to choose
+# maximum top peaks to pick
 if (NOT QALEN)
     set(QALEN   100)
 endif()
 
-# Maximum spectra batch size
+# maximum spectra batch size
 if (NOT QCHUNK)
     set(QCHUNK   10000)
 endif()
 
-# Maximum hyperscore allowed
+# maximum hyperscore allowed
 if (NOT MAX_HYPERSCORE)
     set(MAX_HYPERSCORE   100)
+endif()
+
+# maximum shared b- or y-ions allowed
+if (NOT MAX_SHDPEAKS)
+    set(MAX_SHDPEAKS   80)
 endif()
 
 # configure the file

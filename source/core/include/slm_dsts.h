@@ -289,10 +289,10 @@ typedef struct _pepEntry
  */
 typedef struct _BYC
 {
-    ushort_t   bc;        /* b ion count */
-    ushort_t   yc;        /* y ion count */
-    uint_t    ibc;
-    uint_t    iyc;
+    short_t      bc; // b ion count
+    short_t      yc; // y ion count
+    long_t      ibc; // b ion intensities
+    long_t      iyc; // y ion intensities
 
     _BYC()
     {
@@ -305,8 +305,8 @@ typedef struct _BYC
 
 typedef struct _SLMchunk
 {
-    uint_t    *iA; /* Ions Array (iA)   */
-    uint_t    *bA; /* Bucket Array (bA) */
+    uint_t    *iA; // Ions Array (iA)  
+    uint_t    *bA; // Bucket Array (bA)
 
     _SLMchunk()
     {
@@ -315,7 +315,7 @@ typedef struct _SLMchunk
     }
 
 #ifdef FUTURE
-    uchar_t *bits = NULL; /* Scorecard bits    */
+    uchar_t *bits = NULL; // Scorecard bits
 #endif /* FUTURE */
 } SLMchunk;
 

@@ -60,7 +60,7 @@ using status_t = int;
 using int_t = int;
 using longlong_t = long long;
 using short_t = short;
-using LONG = long;
+using long_t = long;
 using char_t = char;
 using VOID = void;
 using BOOL = bool;
@@ -81,10 +81,10 @@ using float_t  = float;
 using CHG = unsigned int;
 using SLM_SC = unsigned short*;
 
-using AA = char;          // Amino Acid
-using PEAK = double;      // m/z of a fragement (peak)
+using AA = char;            // Amino Acid character
+using PEAK = double;        // m/z of a fragement (peak)
 using intensity_t = double; // Intensity of a fragment (peak)
-using SPECTRUM = double*; // Theoretical Spectrum
+using SPECTRUM = double*;   // Theoretical Spectrum
 
 using  thread_t = pthread_t;
 using  lock_t = sem_t;

@@ -24,9 +24,6 @@
 // Specially measure the compute to overhead (comm and I/O) ratio.
 //
 
-// include cereal to read/archive MS2 index
-// #include <cereal/archives/binary.hpp>
-
 // external query filenames
 extern vector<string_t> queryfiles;
 
@@ -84,11 +81,11 @@ status_t synchronize()
     // get ptrs
     MSQuery **ptrs = get_instance();
 
-    // MPI synchronize
+    // synchronize
     status = hcp::mpi::barrier();
 
-    // TODO: synchronous allgather of ptrs
-    // How do we gather??
+    // write index to file
+    MSQuery::write_index();
 
     return status;
 }
@@ -130,26 +127,51 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
         // get local partition size
         auto pfiles = hcp::mpi::getPartitionSize(nfiles);
 
-        // fill the vector with locally processed MS2 file indices
-        // fixme: indices needed not size (single node run produces '1' here)
-        std::vector<int_t> ms2local(pfiles);
-        std::generate(std::begin(ms2local), std::end(ms2local), 
-                      [n=params.myid] () mutable { return n += params.nodes; });
+        if (params.nodes > 1)
+            MSQuery::init_index();
+
+        // if pfiles > 0
+        if (pfiles) 
+        {
+            // fill the vector with locally processed MS2 file indices
+            std::vector<int_t> ms2local(pfiles);
+
+            // first element is params.myid
+            ms2local[0] = params.myid;
+
+            // rest of the files in cyclic order
+            std::generate(std::begin(ms2local) + 1, std::end(ms2local), 
+                          [n=params.myid] () mutable { return n += params.nodes; });
 
 #ifdef USE_OMP
 #pragma omp parallel for schedule (dynamic, 1)
 #endif/* _OPENMP */
-        for (auto fid = 0; fid < pfiles; fid++)
-        {
-            // fix the ms2local numbers (indices not sizes)
-            auto loc_fid = ms2local[fid];
-            ptrs[loc_fid]->InitQueryFile(&queryfiles[loc_fid], fid);
+            for (auto fid = 0; fid < pfiles; fid++)
+            {
+                auto loc_fid = ms2local[fid];
+                ptrs[loc_fid]->initialize(&queryfiles[loc_fid], fid);
+
+                // archive the index variables
+                ptrs[loc_fid]->archive(loc_fid);
+            }
         }
 
         //
         // Synchronize superstep 2
         //
-        status = hcp::ms2::synchronize();
+        if (params.nodes > 1)
+        {
+            status = hcp::ms2::synchronize();
+            info_t *findex = new info_t[nfiles];
+
+            MSQuery::read_index(findex, nfiles);
+
+            // copy data back from the index
+            for (auto fid = 0; fid < nfiles; fid ++)
+                ptrs[fid]->Info() = findex[fid];
+            
+            delete[] findex;
+        }
 
         // -------------------------------------------------------------------------------------- //
 
@@ -174,9 +196,6 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
 
         if (params.myid == 0)
             std::cout << "\nDataset Size = " << dssize << std::endl << std::endl;
-
-        // clear the vector
-        ms2local.clear();
     }
     
     return status;

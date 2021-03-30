@@ -29,11 +29,11 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH ON CACHE BOOL "Append directories in the l
 set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE BOOL "Build position independent code")
 
 # Set a default build type if none was specified
-set(default_build_type "RelWithDebInfo")
+set(HiCOPS_BUILD_TYPE "RelWithDebInfo")
  
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    message(STATUS "Setting build type to '${default_build_type}' as none was specified.")
-    set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE
+    message(STATUS "Setting build type to '${HiCOPS_BUILD_TYPE}' as none was specified.")
+    set(CMAKE_BUILD_TYPE "${HiCOPS_BUILD_TYPE}" CACHE
       STRING "Choose the type of build." FORCE)
     # Set the possible values of build type for cmake-gui
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
@@ -55,6 +55,18 @@ set(GCC_EXPECTED_VERSION 7.2.0)
 if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS GCC_EXPECTED_VERSION)
     message(FATAL_ERROR "GCC: HiCOPS requires GCC v${GCC_EXPECTED_VERSION} or higher to build but found v${CMAKE_CXX_COMPILER_VERSION}")
 endif()
+
+##########################################################################################
+#       CXX standard
+##########################################################################################
+set(CXX_STANDARD_REQUIRED ON)
+set(HiCOPS_CXX_STANDARD 17)
+
+if(CMAKE_CXX_STANDARD LESS ${HiCOPS_CXX_STANDARD})
+    set(CMAKE_CXX_STANDARD ${HiCOPS_CXX_STANDARD})
+    message(STATUS "Setting CXX_STANDARD to ${HiCOPS_CXX_STANDARD}")
+endif()
+
 
 ##########################################################################################
 #       MPI and OpenMP
@@ -166,14 +178,24 @@ if (NOT MAX_SHDPEAKS)
 endif()
 
 # configure the file
-configure_file(config.hpp.in config.hpp @ONLY)
+configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/config.hpp.in config.hpp @ONLY)
+
+# configure the file
+configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/common.hpp.in common.hpp @ONLY)
 
 # install the configured file as well
-install(FILES ${CMAKE_BINARY_DIR}/config.hpp DESTINATION include)
+install(FILES ${CMAKE_BINARY_DIR}/config.hpp ${CMAKE_BINARY_DIR}/common.hpp DESTINATION include)
 
 ##########################################################################################
 #       Add sub-directories
 ##########################################################################################
+
+#----------------------------------------------------------------------------------------#
+#   externals
+#----------------------------------------------------------------------------------------#
+
+message(STATUS "Adding external...")
+add_subdirectory(external)
 
 #----------------------------------------------------------------------------------------#
 #   hicops source
@@ -188,10 +210,3 @@ add_subdirectory(source)
 
 message(STATUS "Adding hicops tools...")
 add_subdirectory(tools)
-
-#----------------------------------------------------------------------------------------#
-#   externals source
-#----------------------------------------------------------------------------------------#
-
-message(STATUS "Adding externals source...")
-add_subdirectory(external)

@@ -19,8 +19,8 @@
 
 #pragma once
 
-#include "common.h"
-#include "config.h"
+#include "common.hpp"
+#include "config.hpp"
 #include "minheap.h"
 #include <cstring>
 

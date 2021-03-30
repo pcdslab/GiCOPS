@@ -22,7 +22,7 @@
 #include <chrono>
 #include <ctime>
 #include <dirent.h>
-#include "common.h"
+#include "common.hpp"
 #include "utils.h"
 #include "mods.h"
 #include "slmerr.h"

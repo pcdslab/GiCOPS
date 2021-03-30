@@ -24,7 +24,7 @@
 #include <bits/stdc++.h>
 #include <functional>
 #include <cstdlib>
-#include "common.h"
+#include "common.hpp"
 #include "slm_dsts.h"
 #include "keyval.h"
 

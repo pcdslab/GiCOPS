@@ -1,5 +1,4 @@
 /*
- * This file is part of SLM-Transform
  *  Copyright (C) 2019  Muhammad Haseeb, Fahad Saeed
  *  Florida International University, Miami, FL
  *
@@ -18,32 +17,19 @@
  *
  */
 
-#ifndef LBE_H_
-#define LBE_H_
+#pragma once 
 
-#include <chrono>
-#include <ctime>
-#include <dirent.h>
-#include "common.h"
+#include <vector>
+#include "common.hpp"
+#include "slm_dsts.h"
 #include "utils.h"
-#include "mods.h"
-#include "slmerr.h"
 
-#define SLM_Main               main
-/*
- * FUNCTION: LBE_CountPeps
- *
- * DESCRIPTION: Count peptides in FASTA and the
- *              number of mods that will be generated
- *
- * INPUT:
- * @threads      : Number of parallel threads
- * @filename     : Path to FASTA file
- * @modconditions: Mod generation conditions
- *
- * OUTPUT:
- * @status: Status of execution
- */
-status_t LBE_CountPeps(char_t *filename);
+#define UNUSED_PARAM(x)              (void)(x)
 
-#endif /* LBE_H_ */
+status_t DBCounter(char_t *filename);
+
+float_t UTILS_CalculatePepMass(AA *seq, uint_t len);
+
+status_t UTILS_InitializeModInfo(SLM_vMods *vMods);
+
+float_t UTILS_CalculateModMass(AA *seq, uint_t len, uint_t vModInfo);

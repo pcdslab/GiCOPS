@@ -17,6 +17,8 @@
  *
  */
 
+// CMake generated header file. Do not modify
+
 #pragma once
 
 #include <string>
@@ -33,7 +35,7 @@
 #include <assert.h>
 #include <unistd.h>
 
-#include "config.h"
+#include "config.hpp"
 #include "slmerr.h"
 
 #ifdef USE_OMP

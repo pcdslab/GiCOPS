@@ -20,7 +20,7 @@
 #pragma once
 
 #include <string>
-#include "common.h"
+#include "common.hpp"
 #include "utils.h"
 
 /* Spectrum */

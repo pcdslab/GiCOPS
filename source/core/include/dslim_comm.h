@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include "common.h"
+#include "common.hpp"
 #include "slm_dsts.h"
 #include "expeRT.h"
 #include "dslim.h"

@@ -211,17 +211,17 @@ def genSampleParams(inpath):
 
     sample.write('# -------------- MPI parameters --------------\n\n')
 
-    sample.write('# Number of nodes\n')
+    sample.write('# Number of nodes (max: 2)\n')
     sample.write('nodes=2\n\n')
 
-    sample.write('# Cores per MPI process\n')
+    sample.write('# Cores per MPI process (choose from: 32, 64)\n')
     sample.write('cpus_per_task=32\n\n')
 
-    sample.write('# MPI bind processes to: none, hwthread, core, l1cache, l2cache, l3cache, socket, numa, board\n')
-    sample.write('bindto=socket\n\n')
+    # sample.write('# MPI bind processes to: none, hwthread, core, l1cache, l2cache, l3cache, socket, numa, board\n')
+    # sample.write('bindto=socket\n\n')
 
-    sample.write('# MPI map processes by: slot, hwthread, core, socket, numa, board, node\n')
-    sample.write('mapby=socket\n\n')
+    # sample.write('# MPI map processes by: slot, hwthread, core, socket, numa, board, node\n')
+    # sample.write('mapby=socket\n\n')
 
     sample.write('# Optimize MPI settings? on/off\n')
     sample.write('optimize=on\n\n')
@@ -429,7 +429,7 @@ if __name__ == '__main__':
     parameters['cpus_per_numa'] = int (parameters['cores']/parameters['numa'])
 
     # max allowed nodes to SGSI community 
-    parameters['MAXNODES'] = 4
+    parameters['MAXNODES'] = 2
 
     # mpi settings
     parameters['ntasks_per_socket'] = 2
@@ -559,10 +559,15 @@ if __name__ == '__main__':
             # Set cores per MPI process
             elif (param == 'cpus_per_task'):
                 parameters['cpus_per_task'] = int(val)
-                if (parameters['cpus_per_task'] <= 6 or parameters['cpus_per_task'] > parameters['cpus_per_socket']):
-                    parameters['cpus_per_task'] = parameters['cpus_per_socket']
-                    parameters['ntasks_per_socket'] = 1
-                    parameters['ntasks_per_node'] = parameters['sockets'] * parameters['ntasks_per_socket']
+                if (parameters['cpus_per_task'] not in [32,64]):
+                    parameters['ntasks_per_socket'] = 2
+                    parameters['cpus_per_task'] = int(parameters['cpus_per_socket']/parameters['ntasks_per_socket'])
+
+                else:
+                    parameters['ntasks_per_socket'] = int(parameters['cpus_per_socket']/parameters['cpus_per_task'])
+
+                parameters['ntasks_per_node'] = parameters['sockets'] * parameters['ntasks_per_socket']
+                parameters['ntasks'] = int(parameters['ntasks_per_node'] * parameters['nodes'])
 
             # Optimize number of cores and MPI processes to run?
             elif (param == 'optimize'):
@@ -991,10 +996,9 @@ if __name__ == '__main__':
 
         # Optimize based on the index size (in spectra) per MPI
         # If partition size > 25 million, then increase number of partitions
-        min_threads = parameters['cpus_per_numa']
         max_tasks_per_node = parameters['numa']
 
-        if parameters['size_per_task'] > (parameters['mem_per_task'] * 0.7):
+        if parameters['size_per_task'] > (parameters['mem_per_task'] * 0.8):
 
             parameters['ntasks_per_socket'] = 1
             parameters['cpus_per_task'] = int(parameters['cpus_per_socket'] / parameters['ntasks_per_socket'])

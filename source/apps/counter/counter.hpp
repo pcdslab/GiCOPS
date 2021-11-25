@@ -24,8 +24,6 @@
 #include "slm_dsts.h"
 #include "utils.h"
 
-#define UNUSED_PARAM(x)              (void)(x)
-
 status_t DBCounter(char_t *filename);
 
 float_t UTILS_CalculatePepMass(AA *seq, uint_t len);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019  Muhammad Haseeb, Fahad Saeed
+ * Copyright (C) 2019 Muhammad Haseeb, Fahad Saeed
  * Florida International University, Miami, FL
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,8 +22,18 @@ using namespace std;
 
 extern gParams params;
 
+#ifdef USE_MPI
+// MPI datatype for info_t
 MPI_Datatype MPI_info;
+// handle for summary.io file
 MPI_File fh;
+
+#else
+// handle for summary.io file
+std::ofstream *fh;
+
+#endif // USE_MPI
+
 
 MSQuery::MSQuery()
 {
@@ -171,7 +181,7 @@ status_t MSQuery::initialize(string_t *filename, int_t fno)
         delete qqfile;
     }
     else
-        status = ERR_FILE_ERROR;
+        status = ERR_FILE_NOT_FOUND;
 
     /* Return the status */
     return status;
@@ -201,6 +211,8 @@ status_t MSQuery::init_index()
 {
     string fname = params.datapath + "/summary.io";
 
+#ifdef USE_MPI
+
     // create a MPI data type
     MPI_Type_contiguous((int_t)(sizeof(info_t) / sizeof(int_t)),
                         MPI_INT,
@@ -211,15 +223,41 @@ status_t MSQuery::init_index()
     // open the file
     status_t err = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), (MPI_MODE_CREATE | MPI_MODE_WRONLY), MPI_INFO_NULL, &fh);
 
+#else
+
+    fh = new ofstream;
+    fh->open(fname, ios::out | ios::binary);
+    status_t err = SLM_SUCCESS;
+
+    if (!fh)
+        err = ERR_FILE_NOT_FOUND;
+
+#endif // USE_MPI
+
     return err;
 }
 
-status_t MSQuery::write_index() { return MPI_File_close(&fh); }
+status_t MSQuery::write_index()
+{
+#ifdef USE_MPI
+    return MPI_File_close(&fh);
+#else
+    fh->close();
+
+    delete fh;
+    fh = nullptr;
+
+    return SLM_SUCCESS;
+
+#endif // USE_MPI
+}
 
 status_t MSQuery::read_index(info_t *findex, int_t size)
 {
     // file name
     string fname = params.datapath + "/summary.io";
+
+#ifdef USE_MPI
     MPI_File fh2;
 
     // open the file
@@ -230,11 +268,35 @@ status_t MSQuery::read_index(info_t *findex, int_t size)
 
     // close the file
     MPI_File_close(&fh2);
+#else
+
+    std::ifstream fh2(fname, ios::in | ios::binary);
+
+    status_t status = SLM_SUCCESS;
+
+    if (fh2.is_open())
+    {
+        fh2.read((char_t *)findex, size * sizeof(info_t));
+        fh2.close();
+    }
+    else
+        status = ERR_FILE_NOT_FOUND;
+
+#endif // USE_MPI
 
     return status;
 }
 
-status_t MSQuery::archive(int_t index) { return MPI_File_write_at(fh, sizeof(info_t)*(index), &info, 1, MPI_info, MPI_STATUS_IGNORE); }
+status_t MSQuery::archive(int_t index) 
+{
+#ifdef USE_MPI
+    return MPI_File_write_at(fh, sizeof(info_t)*(index), &info, 1, MPI_info, MPI_STATUS_IGNORE); 
+#else
+    fh->write((char_t *)&info, sizeof(info_t));
+
+    return SLM_SUCCESS;
+#endif
+}
 
 status_t MSQuery::extractbatch(uint_t count, Queries *expSpecs, int_t &rem)
 {

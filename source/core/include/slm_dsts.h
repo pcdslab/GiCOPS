@@ -666,7 +666,7 @@ typedef struct _commRqst
 {
     uint_t btag;
     uint_t bsize;
-    uint_t buff;
+    int_t buff;
 
     VOID _comRqst()
     {

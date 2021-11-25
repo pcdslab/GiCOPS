@@ -27,10 +27,6 @@ uint_t reduce = 0;
 
 extern gParams params;
 
-#ifdef GENFEATS
-BOOL          *features;
-#endif
-
 
 /* FUNCTION: DSLIM_Construct
  *

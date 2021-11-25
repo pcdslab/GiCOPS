@@ -18,7 +18,7 @@ set_target_properties(counter
         INSTALL_RPATH_USE_LINK_PATH ON
 )
 
-target_include_directories(counter PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../core/include ${CMAKE_BINARY_DIR})
+target_include_directories(counter PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../../core/include ${CMAKE_BINARY_DIR})
 
 # installation
 install(TARGETS counter DESTINATION ${CMAKE_INSTALL_BINDIR})

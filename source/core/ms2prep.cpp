@@ -53,9 +53,15 @@ T getPartitionSize(T isize)
 //
 // FUNCTION: barrier (wrapper for MPI_Barrier)
 //
-status_t barrier()
+inline status_t barrier()
 {
-    return MPI_Barrier(MPI_COMM_WORLD);
+    status_t status = SLM_SUCCESS;
+
+#ifdef USE_MPI
+    status = MPI_Barrier(MPI_COMM_WORLD);
+#endif // USE_MPI
+
+    return status;
 }
 
 //

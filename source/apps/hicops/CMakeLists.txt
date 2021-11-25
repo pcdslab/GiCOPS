@@ -1,14 +1,14 @@
 
 project(hicops LANGUAGES C CXX)
 
-# timemory headers are available
+# hicops headers are available
 add_executable(hicops ${_EXCLUDE}
     ${CMAKE_CURRENT_LIST_DIR}/hicops.cpp)
 
 add_dependencies(hicops argparse)
 
 # include core/include and generated files
-target_include_directories(hicops PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../core/include ${CMAKE_BINARY_DIR} ${ARGPARSE_INCLUDE_DIR})
+target_include_directories(hicops PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../../core/include ${CMAKE_BINARY_DIR} ${ARGPARSE_INCLUDE_DIR})
 
 # link appropriate libraries
 target_link_libraries(hicops hicops-core ${MPI_LIBRARIES})

@@ -66,6 +66,7 @@ status_t main(int_t argc, char_t* argv[])
 
     // configure PAPI events
     const std::string def_papi_evts = "PAPI_TOT_INS, PAPI_TOT_CYC, PAPI_L3_TCM, PAPI_L2_TCA, PAPI_L3_TCA, PAPI_MEM_WCY, PAPI_RES_STL, PAPI_STL_CCY, PAPI_BR_CN, PAPI_BR_PRC, PAPI_FUL_ICY";
+
     std::string papi_evts = tim::get_env<std::string>("HICOPS_PAPI_EVENTS", def_papi_evts);
     tim::settings::papi_events() = papi_evts;
 
@@ -82,7 +83,7 @@ status_t main(int_t argc, char_t* argv[])
     }
 
 #ifdef USE_MPI
-#    if defined (USE_TIMEMORY)
+#   if defined (USE_TIMEMORY)
     // timemory MPI settings
     tim::settings::mpi_thread() = true;
     tim::settings::mpi_thread_type() = "multiple";
@@ -98,10 +99,10 @@ status_t main(int_t argc, char_t* argv[])
     // Check if desired MPI level available 
     if (provided != MPI_THREAD_MULTIPLE)
     {
-        std::cout << "************************ Warning: ************************\n";
-                "Your MPI distribution does not support MPI_THREAD_MULTIPLE\n";
-                "HiCOPS may not work properly\n";
-                "**********************************************************\n";
+        std::cout << "************************ Warning: **************************\n";
+                     " Your MPI distribution does not support MPI_THREAD_MULTIPLE\n";
+                     " HiCOPS may not work properly\n";
+                     "************************************************************\n";
     }
 #   endif // USE_TIMEMORY
 
@@ -197,6 +198,7 @@ status_t main(int_t argc, char_t* argv[])
     time_tuple_t index_inst("indexing");
 #endif
 
+    // loop through peptides sequences by length
     for (uint_t peplen = minlen; peplen <= maxlen && status == SLM_SUCCESS; peplen++)
     {
         dbfile = params.dbpath + "/" + std::to_string(peplen) + extension;
@@ -370,7 +372,7 @@ status_t main(int_t argc, char_t* argv[])
 #endif
 
     // --------------------------------------------------------------------------------------------- //
-    
+
     //
     // Merging
     //

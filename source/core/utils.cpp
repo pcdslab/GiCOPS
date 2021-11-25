@@ -295,8 +295,7 @@ float_t UTILS_CalculatePepMass(AA *seq, uint_t len)
     /* Calculate peptide mass */
     for (uint_t l = 0; l < len; l++)
     {
-        mass += AAMass[AAidx(seq[l])];
-        mass += StatMods[AAidx(seq[l])];
+        mass += AAMass[AAidx(seq[l])] + StatMods[AAidx(seq[l])];
     }
 
     return mass;

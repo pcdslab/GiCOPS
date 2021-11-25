@@ -6,11 +6,9 @@
 message(STATUS "Adding core...")
 add_subdirectory(core)
 
-message(STATUS "Adding app")
-add_subdirectory(app)
+#----------------------------------------------------------------------------------------#
+#   hicops apps
+#----------------------------------------------------------------------------------------#
 
-#----------------------------------------------------------------------------------------#
-#   counter source
-#----------------------------------------------------------------------------------------#
-message(STATUS "Adding counter source...")
-add_subdirectory(counter)
+message(STATUS "Adding apps...")
+add_subdirectory(apps)

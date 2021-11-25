@@ -84,7 +84,7 @@ std::ostream& operator<<(std::ostream &out, const _heapEntry &c)
 // --------------------------Static functions -----------------------------------
 //
 
-static BOOL DSLIM_BinarySearch(Index *, float_t, int_t&, int_t&);
+static BOOL   DSLIM_BinarySearch(Index *, float_t, int_t&, int_t&);
 static int_t  DSLIM_BinFindMin(pepEntry *entries, float_t pmass1, int_t min, int_t max);
 static int_t  DSLIM_BinFindMax(pepEntry *entries, float_t pmass2, int_t min, int_t max);
 static inline status_t DSLIM_Deinit_IO();
@@ -536,11 +536,11 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
     }
     else
     {
-        LBE_UNUSED_PARAM(liBuff);
+        UNUSED_PARAM(liBuff);
     }
 
 #ifndef _OPENMP
-    LBE_UNUSED_PARAM(threads);
+    UNUSED_PARAM(threads);
 #endif /* USE_OMP */
 
     /* Sanity checks */

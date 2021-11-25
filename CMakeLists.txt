@@ -176,14 +176,17 @@ if (NOT MAX_SHDPEAKS)
     set(MAX_SHDPEAKS   80)
 endif()
 
-# configure the file
+# configure the file: config.hpp
 configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/config.hpp.in config.hpp @ONLY)
 
-# configure the file
+# configure the file: aliases.hpp
+configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/aliases.hpp.in aliases.hpp @ONLY)
+
+# configure the file: common.hpp
 configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/common.hpp.in common.hpp @ONLY)
 
 # install the configured file as well
-install(FILES ${CMAKE_BINARY_DIR}/config.hpp ${CMAKE_BINARY_DIR}/common.hpp DESTINATION include)
+install(FILES ${CMAKE_BINARY_DIR}/config.hpp ${CMAKE_BINARY_DIR}/aliases.hpp ${CMAKE_BINARY_DIR}/common.hpp DESTINATION include)
 
 ##########################################################################################
 #       Add sub-directories

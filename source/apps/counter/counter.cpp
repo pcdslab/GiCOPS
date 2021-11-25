@@ -120,7 +120,7 @@ status_t DBCounter(char_t *filename)
 	ull_t localpeps = 0;
 
 #ifndef VMODS
-    LBE_UNUSED_PARAM(modconditions);
+    UNUSED_PARAM(modconditions);
 #endif /* VMODS */
 
     /* Open file */

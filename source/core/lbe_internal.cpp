@@ -21,8 +21,8 @@
 using namespace std;
 
 vector<string_t> Seqs;
+vector<float_t> MZs;
 uint_t cumusize = 0;
-uint_t *varCount = NULL;
 ifstream file;
 
 extern gParams params;
@@ -165,38 +165,27 @@ status_t LBE_Initialize(Index *index)
         status = ERR_FILE_NOT_FOUND;
     }
 
-    /* Fill in the peps entry */
+    // populate peptide entries
     if (status == SLM_SUCCESS)
-    {
         status = LBE_GeneratePeps(index);
-    }
 
+    // populate mod entries
     if (index->lclmodCnt > 0)
-    {
-        /* Fill in the mods entry */
         status = MODS_GenerateMods(index);
-    }
 
-    /* Make sure Seqs is clear anyway */
+    // clear Seqs and MZs
     Seqs.clear();
+    MZs.clear();
 
     /* Sort the peptide index based on peptide precursor mass */
+    // FIXME: Parallelize me on GPU
     if (status == SLM_SUCCESS && params.dM > 0.0)
     {
         std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, CmpPepEntries);
     }
 
-    /* Deinitialize varCount */
-    if (varCount != NULL)
-    {
-        delete[] varCount;
-        varCount = NULL;
-    }
-
     if (status != SLM_SUCCESS)
-    {
-        (VOID) LBE_Deinitialize(index);
-    }
+        LBE_Deinitialize(index);
 
     return status;
 }
@@ -219,7 +208,7 @@ status_t LBE_GeneratePeps(Index *index)
     {
         uint_t idd = DSLIM_GenerateIndex(index, fill);
 
-        entries[fill].Mass = UTILS_CalculatePepMass((AA *)Seqs.at(idd).c_str(), seqlen);
+        entries[fill].Mass = MZs[idd];
         entries[fill].seqID = idd;
         entries[fill].sites.sites = 0x0;
         entries[fill].sites.modNum = 0x0;
@@ -370,7 +359,6 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
 {
     status_t status = SLM_SUCCESS;
     string_t line;
-    float_t pepmass = 0.0;
     string_t modconditions = params.modconditions;
     uint_t maxmass= params.max_mass;
     uint_t minmass= params.min_mass;
@@ -389,35 +377,40 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
         {
             if (line.at(0) != '>')
             {
-                /* Linux needs \n not \r\n at end of each line */
+                // remove any \r symbols at the eol
                 if (line.at(line.length() - 1) == '\r')
                 {
                     line = line.substr(0, line.size() - 1);
                 }
 
-                /* Transform to all upper case letters */
+                // transform to all upper case letters
                 std::transform(line.begin(), line.end(), line.begin(), ::toupper);
 
-                /* Check the integrity of the peptide
-                 * sequence being read */
+                // check length
                 if (line.length() != explen)
                 {
                     status = ERR_INVLD_SIZE;
-                    break;
+                    std::cerr << "Invalid peplen: " << line.length() << ", expected: " << explen << std::endl;
                 }
 
-                /* Calculate mass of peptide */
-                pepmass = UTILS_CalculatePepMass((AA *)line.c_str(), line.length());
+                // validate precursor mass
+                float_t pepmass = UTILS_CalculatePepMass((AA *)line.c_str(), line.length());
 
-                /* Check if the peptide mass is legal */
+                // add to Seqs and MZ vectors
                 if (pepmass >= minmass && pepmass <= maxmass)
                 {
-                    index->pepCount++;
-                    index->pepIndex.AAs += line.length();
-                    Seqs.push_back(line);
+                    Seqs.emplace_back(std::move(line));
+                    MZs.emplace_back(std::move(pepmass));
                 }
             }
         }
+
+        /* Close the file once done */
+        file.close();
+
+        // set the index properties
+        index->pepCount = Seqs.size();
+        index->pepIndex.AAs = Seqs[0].length() * Seqs.size();
     }
     else
     {
@@ -425,29 +418,18 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
         status = ERR_INVLD_PARAM;
     }
 
-    /* Allocate the varCount array */
+    // Count the # of varmods given modification info
     if (status == SLM_SUCCESS)
-    {
-        varCount = new uint_t[index->pepCount + 1];
-    }
-
-    /* Count the number of variable mods given
-     * modification information */
-    if (status == SLM_SUCCESS)
-    {
         index->modCount = MODS_ModCounter();
-    }
 
-    /* Check if any errors occurred in MODS_ModCounter */
+    // check for errors in MODS_ModCounter
     if (index->modCount == (uint_t)(-1) || index->pepIndex.AAs != index->pepCount * explen)
-    {
         status = ERR_INVLD_SIZE;
-    }
 
-    /* Print if everything is okay */
+    // Print if everything is okay 
     if (status == SLM_SUCCESS)
     {
-        /* Return the total count */
+        // Return the total count
         index->totalCount = index->pepCount + index->modCount;
         cumusize += index->totalCount;
 
@@ -458,9 +440,6 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
             std::cout << "Total Index Size      =\t\t" << index->totalCount << std::endl;
             std::cout << "Cumulative Index Size =\t\t" << cumusize << std::endl << std::endl;
         }
-
-        /* Close the file once done */
-        file.close();
     }
 
     return status;

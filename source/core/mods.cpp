@@ -34,12 +34,10 @@ vector<string_t> tokens;
 uint_t limit = 0;
 ull_t Comb[MAX_COMBS][MAX_COMBS];
 vector<int_t> condList;
+uint_t *varCount;
 
 /* External Variables */
 extern gParams params;
-extern uint_t *varCount;
-
-/* Peptide Sequences */
 extern vector<string_t> Seqs;
 
 /* Static Functions */
@@ -112,15 +110,10 @@ int_t cmpvarEntries(const VOID* lhs, const void *rhs)
      * smaller the modEntry item.
      */
     if (*a << *b)
-    {
         return 1;
-    }
-
     /* b is larger */
     if (*a >> *b)
-    {
         return -1;
-    }
 
     return 0;
 }
@@ -399,12 +392,14 @@ static VOID MODS_ModList(string_t peptide, vector<int_t> conditions,
 ull_t MODS_ModCounter()
 {
     ull_t cumulative = 0;
-    string_t conditions = params.modconditions;
+
+    // allocate memory for varCount
+    varCount = new uint_t[Seqs.size() + 1];
 
     /* Return if no mods to generate */
     if (limit > 0)
     {
-        /* Parallel modcounter */
+        // parallel mod counter
 #ifdef USE_OMP
 #pragma omp parallel for num_threads (params.threads) schedule(static) reduction(+: cumulative)
 #endif // USE_OMP
@@ -414,17 +409,22 @@ ull_t MODS_ModCounter()
             cumulative += varCount[i];
         }
 
-        uint_t count = varCount[0];
-        varCount[0] = 0;
+        // redundant code to test correctness
 
-        for (uint_t ii = 1; ii <= Seqs.size(); ii++)
-        {
-            uint_t tmpcount = varCount[ii];
-            varCount[ii] = varCount[ii - 1] + count;
-            count = tmpcount;
-        }
+        //uint_t count = varCount[0];
+        //varCount[0] = 0;
 
-        assert (varCount[Seqs.size()] == cumulative);
+        // FIXME: compute partial sums in parallel.
+        //for (uint_t ii = 1; ii <= Seqs.size(); ii++)
+        //{
+        //    uint_t tmpcount = varCount[ii];
+        //    varCount[ii] = varCount[ii - 1] + count;
+        //    count = tmpcount;
+        //}
+
+        // assert only works in build mode
+        // if (varCount[Seqs.size()] != cumulative) 
+        //    std::cerr << "FATAL: varCount[Seqs.size()] != cumulative for peplen: " << Seqs[0].size() << std::endl;
     }
 
     return cumulative;
@@ -490,6 +490,10 @@ status_t MODS_GenerateMods(Index *index)
         // quick sort
         std::qsort((void *)(modEntries + stt), ssz, sizeof(pepEntry), cmpvarEntries);
     }
+
+    // remove varCount array
+    delete varCount;
+    varCount = nullptr;
 
     /* Return the status */
     return status;

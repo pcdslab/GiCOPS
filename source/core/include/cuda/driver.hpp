@@ -22,9 +22,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#include "aliases.hpp"
-
-
 namespace hcp
 {
 namespace gpu

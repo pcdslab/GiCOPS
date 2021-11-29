@@ -868,7 +868,8 @@ status_t expeRT::StoreIResults(Results *rPtr, int_t spec, ebuffer *ofs)
 {
     status_t status = 0;
 
-    int_t curptr = spec * psize * sizeof(ushort_t);
+    int_t curptr = spec * Xsamples
+ * sizeof(ushort_t);
     yy = rPtr->survival;
 
     if (yy == NULL)
@@ -896,7 +897,7 @@ status_t expeRT::StoreIResults(Results *rPtr, int_t spec, ebuffer *ofs)
 
         rPtr->minhypscore = stt;
         rPtr->nexthypscore = ends;
-        //rPtr->beta = rPtr->mu + psize * sizeof(ushort_t);
+        //rPtr->beta = rPtr->mu + Xsamples * sizeof(ushort_t);
     }
 
     yy = NULL;
@@ -915,7 +916,8 @@ status_t expeRT::Reconstruct(ebuffer *ebs, int_t specno, partRes *fR)
 
     pN += fR->N;
 
-    char_t *buffer = ebs->ibuff + (specno * (psize * 2));
+    char_t *buffer = ebs->ibuff + (specno * (Xsamples
+ * 2));
 
     for (auto jj = min; jj <= max2; jj++)
     {

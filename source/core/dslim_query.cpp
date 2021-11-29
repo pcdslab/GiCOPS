@@ -822,7 +822,7 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
         }
 
         if (params.nodes > 1)
-            liBuff->currptr = ss->numSpecs * psize * sizeof(ushort_t);
+            liBuff->currptr = ss->numSpecs * Xsamples * sizeof(ushort_t);
 
         /* Update the number of queried spectra */
         spectrumID += ss->numSpecs;
@@ -1182,7 +1182,7 @@ VOID DSLIM_FOut_Thread_Entry()
         string_t fn = params.workspace + "/" +
                     std::to_string(lbuff->batchNum) +
                     "_" + std::to_string(params.myid) + ".dat";
-        batchSize = lbuff->currptr / (psize * sizeof(ushort_t));
+        batchSize = lbuff->currptr / (Xsamples * sizeof(ushort_t));
         fh->open(fn, ios::out | ios::binary);
         fh->write((char_t *)lbuff->packs, batchSize * sizeof(partRes));
         fh->write(lbuff->ibuff, lbuff->currptr * sizeof (char_t));

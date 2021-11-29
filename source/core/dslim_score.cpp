@@ -231,7 +231,8 @@ status_t DSLIM_Score::CombineResults()
             if (fhs[saa].is_open())
             {
                 fhs[saa].read((char_t *)iBuffs[saa].packs, bSize * sizeof(partRes));
-                fhs[saa].read(iBuffs[saa].ibuff, bSize * psize * sizeof(ushort_t));
+                fhs[saa].read(iBuffs[saa].ibuff, bSize * Xsamples
+ * sizeof(ushort_t));
 
                 if (fhs[saa].fail())
                 {

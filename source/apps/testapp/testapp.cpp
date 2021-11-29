@@ -55,8 +55,8 @@ status_t main(int_t argc, char_t* argv[])
     driver->stream_sync();
 
     // run kernel
-    cudaFuncSetAttribute(cuda::s1::vector_add<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, 48*1024);
-    cuda::s1::vector_add<<<128, 256, 48*1024, driver->get_stream()>>>(d_a, d_b, d_c, n);
+    cudaFuncSetAttribute(vector_add<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, 48*1024);
+    vector_add<<<128, 256, 48*1024, driver->get_stream()>>>(d_a, d_b, d_c, n);
 
     // copy data back to host
     cuda::error_check(cuda::D2H(h_c, d_c, n, driver));

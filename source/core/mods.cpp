@@ -39,6 +39,7 @@ uint_t *varCount;
 /* External Variables */
 extern gParams params;
 extern vector<string_t> Seqs;
+extern vector<float_t> MZs;
 
 /* Static Functions */
 static ull_t count(string_t s);

@@ -21,4 +21,13 @@
 
 #include "common.hpp"
 #include "cuda/driver.hpp"
-#include "cuda/superstep1/kernel.hpp"
+
+// test kernel
+template <typename T>
+__global__ void vector_add(T *d_a, T *d_b, T *d_c, int n)
+{
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += blockDim.x * gridDim.x)
+    {
+        d_c[i] = d_a[i] + d_b[i];
+    }
+}

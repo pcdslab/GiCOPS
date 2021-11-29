@@ -18,6 +18,8 @@
  */
 
 #include "lbe.h"
+#include "cuda/driver.hpp"
+#include "cuda/superstep1/kernel.hpp"
 using namespace std;
 
 vector<string_t> Seqs;
@@ -29,7 +31,6 @@ extern gParams params;
 
 /* Static function Prototypes */
 static status_t LBE_AllocateMem(Index *index);
-static inline BOOL CmpPepEntries(pepEntry e1, pepEntry e2);
 /*
  * FUNCTION: LBE_AllocateMem
  *
@@ -173,16 +174,73 @@ status_t LBE_Initialize(Index *index)
     if (index->lclmodCnt > 0)
         status = MODS_GenerateMods(index);
 
-    // clear Seqs and MZs
+    // clear Seqs
     Seqs.clear();
+    // clear MZs
     MZs.clear();
 
-    /* Sort the peptide index based on peptide precursor mass */
-    // FIXME: Parallelize me on GPU
-    if (status == SLM_SUCCESS && params.dM > 0.0)
+    //Sort the peptide index based on peptide precursor mass
+    if (status == SLM_SUCCESS)
     {
-        std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, CmpPepEntries);
+#if 1 //defined (GPU) && defined(CUDA)
+
+    float_t *h_mzs = nullptr;
+
+    hcp::gpu::cuda::host_pinned_allocate<float_t>(h_mzs, index->lcltotCnt);
+
+#if defined (USE_OMP)
+#pragma omp parallel for num_threads(threads) schedule (static)
+#endif // USE_OMP
+        for (int i = 0; i < index->lcltotCnt; i++)
+        {
+            h_mzs[i] = index->pepEntries[i].Mass;
+        }
+
+        //sort on GPU
+        hcp::gpu::cuda::s1::SortpepEntries(index, h_mzs);
+#else
+        // sort on CPU
+        std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, [](pepEntry &e1, pepEntry &e2) { return e1 < e2; });
+
+        // free the host vector
+        hcp::gpu::cuda::host_pinned_free(h_mzs);
+
+#endif // GPU && CUDA
     }
+
+    // 
+    // FIXME: Soft remove invalid peptides
+    // Will need to call LBE_Distribute and/or LBE_CreatePartitions again
+    //
+    auto removeInvalidPeps = [&]()
+    {
+        // local variables
+        int total = index->lcltotCnt;
+        int nmods = index->lclmodCnt;
+        uint_t maxmass = params.max_mass;
+
+        // check for any invalid mass peptides from the end.
+        for (int i = index->lclmodCnt-1; i > index->lclpepCnt; i--)
+        {
+            // since the pepEntries are sorted in ascending order
+            if (index->pepEntries[i].Mass > maxmass)
+            {
+                index->lcltotCnt--;
+                index->lclmodCnt--;
+                index->lastchunksize--;
+
+                // if only one chunk
+                if (index->nChunks == 1)
+                    index->chunksize--;
+            }
+            // if small then break
+            else
+                break;
+        }
+    };
+
+    // TODO: soft remvoe the invalid mods if present
+    // removeInvalidPeps();
 
     if (status != SLM_SUCCESS)
         LBE_Deinitialize(index);
@@ -467,4 +525,3 @@ VOID LBE_PrintHeader()
     return;
 }
 
-static inline BOOL CmpPepEntries(pepEntry e1, pepEntry e2) { return e1 < e2; }

@@ -19,9 +19,8 @@
 
 #pragma once
 
-// include cuda.h here
-#include <cuda.h>
-#include "cuda/driver.hpp"
+#include "slm_dsts.h"
+#include "slmerr.h"
 
 namespace hcp
 {
@@ -35,15 +34,13 @@ namespace cuda
 namespace s1
 {
 
-// test kernel
-template <typename T>
-__global__ void vector_add(T *d_a, T *d_b, T *d_c, int n)
-{
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += blockDim.x * gridDim.x)
-    {
-        d_c[i] = d_a[i] + d_b[i];
-    }
-}
+// kernel to sort pepEntries
+void SortpepEntries(Index *, float_t *);
+
+status_t ConstructIndexChunk(Index *index, int_t chunk_number);
+
+// kernel to stable sort fragment-ion data
+void StableKeyValueSort(uint_t *keys, uint_t* data, int size);
 
 } // namespace s1
 

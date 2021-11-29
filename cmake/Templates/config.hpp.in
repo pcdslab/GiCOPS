@@ -61,6 +61,9 @@
 // chunk size in number ions per chunk (def: 2 billion)
 #define MAX_IONS                       0x80000000
 
+// number of X-axis samples in the histogram
+#define Xsamples                128
+
 // FUTURE:  Only b- and y-ions used in current implementation
 
 // Define the Ion Series and add it to iSERIES

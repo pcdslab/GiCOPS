@@ -18,6 +18,7 @@
  */
 
 #include "dslim.h"
+#include "cuda/superstep1/kernel.hpp"
 using namespace std;
 
 /* Global Variables */
@@ -121,7 +122,8 @@ status_t DSLIM_Construct(Index *index)
         }
     }
 
-
+    // no need to stablize the sort if already stable sorted
+#if 0 //defined (GPU) && defined(CUDA)
     /* Optimize the CFIR index chunks */
     if (status == SLM_SUCCESS)
     {
@@ -129,6 +131,7 @@ status_t DSLIM_Construct(Index *index)
             status = DSLIM_Optimize(index, chunk_number);
 
     }
+#endif //defined (GPU) && defined(CUDA)
 
     return status;
 }
@@ -221,7 +224,7 @@ status_t DSLIM_ConstructChunk(uint_t threads, Index *index, uint_t chunk_number)
     const uint_t scale = params.scale;
 
     /* Check if this chunk is the last chunk */
-    BOOL lastChunk = (chunk_number == (index->nChunks - 1))? true: false;
+    bool lastChunk = (chunk_number == (index->nChunks - 1))? true: false;
 
     uint_t *BAPtrs[threads];
     uint_t *bA = new uint_t[(int_t)(threads * scale * maxmass)];
@@ -366,6 +369,9 @@ status_t DSLIM_SLMTransform(uint_t threads, Index *index, uint_t chunk_number)
     uint_t *iAPtr = index->ionIndex[chunk_number].iA;
     uint_t iAsize = size * speclen;
 
+#if 1 //defined (GPU) && defined(CUDA)
+    hcp::gpu::cuda::s1::StableKeyValueSort(SpecArr, iAPtr, iAsize);
+#else
     /* Construct DSLIM.iA */
 #ifdef USE_OMP
 #pragma omp parallel for num_threads(threads) schedule(static)
@@ -379,6 +385,8 @@ status_t DSLIM_SLMTransform(uint_t threads, Index *index, uint_t chunk_number)
 #else
     KeyVal_Serial<uint_t>(SpecArr, iAPtr, iAsize);
 #endif /* USE_OMP */
+
+#endif // GPU && CUDA
 
     return status;
 }

@@ -910,8 +910,6 @@ typedef struct _fResult
 
 } fResult;
 
-#define psize          128
-
 typedef struct _ebuffer
 {
     char_t *ibuff;
@@ -923,7 +921,7 @@ typedef struct _ebuffer
     _ebuffer()
     {
         packs = new partRes[QCHUNK];
-        ibuff = new char_t[(psize * sizeof (ushort_t)) * QCHUNK];
+        ibuff = new char_t[(Xsamples * sizeof (ushort_t)) * QCHUNK];
         currptr = 0;
         batchNum = -1;
         isDone = true;

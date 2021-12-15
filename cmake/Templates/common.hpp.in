@@ -56,4 +56,5 @@
 
 // ------------------------------------------------------------------------------------ //
 
-#define printVar(x)                      std::cout << #x " = " << x << std::endl;
+#define printVar(x)                      std::cout << #x << " = " << x << std::endl
+#define print2Vars(x, y)                  std::cout << #x << " = " << x << ", " << #y << " = " << y << std::endl

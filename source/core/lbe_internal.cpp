@@ -184,26 +184,24 @@ status_t LBE_Initialize(Index *index)
     {
 #if 1 //defined (GPU) && defined(CUDA)
 
+    // extract all peptide masses in an array to simplify computations
     float_t *h_mzs = nullptr;
-
     hcp::gpu::cuda::host_pinned_allocate<float_t>(h_mzs, index->lcltotCnt);
 
 #if defined (USE_OMP)
 #pragma omp parallel for num_threads(threads) schedule (static)
 #endif // USE_OMP
         for (int i = 0; i < index->lcltotCnt; i++)
-        {
             h_mzs[i] = index->pepEntries[i].Mass;
-        }
 
-        //sort on GPU
+        //sort by masses on GPU
         hcp::gpu::cuda::s1::SortpepEntries(index, h_mzs);
-#else
-        // sort on CPU
-        std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, [](pepEntry &e1, pepEntry &e2) { return e1 < e2; });
 
-        // free the host vector
+        // free the masses array
         hcp::gpu::cuda::host_pinned_free(h_mzs);
+#else
+        // directly sort the pepEntries on the CPU
+        std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, [](pepEntry &e1, pepEntry &e2) { return e1 < e2; });
 
 #endif // GPU && CUDA
     }

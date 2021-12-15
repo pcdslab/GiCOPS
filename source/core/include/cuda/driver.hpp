@@ -31,6 +31,7 @@ namespace cuda
 
 #define error_check(ans)                   check((ans), __FILE__, __LINE__)
 
+
 // ------------------------------------------------------------------------------------ //
 
 // error checking function

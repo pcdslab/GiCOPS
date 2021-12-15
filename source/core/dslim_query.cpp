@@ -595,7 +595,7 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
                 uint_t speclen = (index[ixx].pepIndex.peplen - 1) * maxz * iSERIES;
                 uint_t halfspeclen = speclen / 2;
 #ifdef MATCH_CHARGE
-                uint_t sixthspeclen = speclen / 6;
+                uint_t peplen_1 = index[ixx].pepIndex.peplen - 1;
 #endif // MATCH_CHARGE
 
                 for (uint_t chno = 0; chno < index[ixx].nChunks; chno++)
@@ -656,7 +656,10 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
                                     int_t isB = 1 - isY;
 
 #ifdef MATCH_CHARGE
-                                    int_t ichg = residue / sixthspeclen;
+
+                                    // FIXME: Is this ichg computation correct?
+                                    int_t ichg = (residue / peplen_1) % maxz;
+                                    ichg += 1;
 
                                     isY *= residue && (ichg < (pchg + params.maxz));
                                     isB *= residue && (ichg < pchg);

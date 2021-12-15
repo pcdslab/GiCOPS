@@ -147,7 +147,10 @@ status_t main(int_t argc, char_t* argv[])
 
     // Initialize the mod information
     if (status == SLM_SUCCESS)
+    {
         status = UTILS_InitializeModInfo(&params.vModInfo);
+    }
+
 
     // Initialize the ModGen Engine
     if (status == SLM_SUCCESS)

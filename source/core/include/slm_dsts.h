@@ -40,13 +40,15 @@ typedef enum _DistPolicy
 
 typedef struct _SLM_varAA
 {
-    AA     residues[4]   ; /* Modified AA residues in this modification - Upto 4 */
+    AA     residues[5]   ; /* Modified AA residues in this modification - Upto 4 */
     uint_t  modMass        ; /* Scaled mass of the modification                    */
     ushort_t aa_per_peptide; /* Allowed modified residues per peptide sequence     */
 
     _SLM_varAA()
     {
-        residues[0]= '\0';
+        residues[0]= '\0'; // only the first letter is null terminated
+        residues[4]= '\0'; // last letter always remains null
+
         modMass = 0;
         aa_per_peptide = 0;
     }

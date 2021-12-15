@@ -87,3 +87,13 @@
                                         IMMONIUM)
 
 // -------------------------------------------------------------------------------- //
+
+// Calculates index in Amino Acid mass array
+#define AAidx(x)                 (x - 'A')
+
+// Mass of water and H+
+#define H2O                      18.015f
+#define PROTON                   1.00727647f
+
+// Not an Amino Acid (NAA)
+#define NAA                      -20000

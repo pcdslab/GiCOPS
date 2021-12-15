@@ -123,6 +123,7 @@ status_t DSLIM_Construct(Index *index)
     }
 
     // no need to stablize the sort if already stable sorted
+
 #if 0 //defined (GPU) && defined(CUDA)
     /* Optimize the CFIR index chunks */
     if (status == SLM_SUCCESS)
@@ -369,10 +370,6 @@ status_t DSLIM_SLMTransform(uint_t threads, Index *index, uint_t chunk_number)
     uint_t *iAPtr = index->ionIndex[chunk_number].iA;
     uint_t iAsize = size * speclen;
 
-#if 1 //defined (GPU) && defined(CUDA)
-    hcp::gpu::cuda::s1::StableKeyValueSort(SpecArr, iAPtr, iAsize);
-#else
-    /* Construct DSLIM.iA */
 #ifdef USE_OMP
 #pragma omp parallel for num_threads(threads) schedule(static)
 #endif /* USE_OMP */
@@ -385,8 +382,6 @@ status_t DSLIM_SLMTransform(uint_t threads, Index *index, uint_t chunk_number)
 #else
     KeyVal_Serial<uint_t>(SpecArr, iAPtr, iAsize);
 #endif /* USE_OMP */
-
-#endif // GPU && CUDA
 
     return status;
 }
@@ -780,7 +775,7 @@ int_t DSLIM_GenerateIndex(Index *index, uint_t key)
     else if (policy == _cyclic)
         value = (key * params.nodes) + params.myid;
     else if (policy == _zigzag)
-        value = false;
+        value = -1;
 
     return value;
 }

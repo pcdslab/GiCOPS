@@ -34,6 +34,9 @@ namespace cuda
 namespace s1
 {
 
+// function to initialize mods
+void initMods(SLM_vMods *vMods);
+
 // kernel to sort pepEntries
 void SortpepEntries(Index *, float_t *);
 

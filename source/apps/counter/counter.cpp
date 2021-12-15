@@ -30,23 +30,13 @@ ifstream file;
 
 extern gParams params;
 
-/* Calculates index in Amino Acid mass array */
-#define AAidx(x)                 (x - 'A')
-
-/* Mass of water - Added to each peptide mass */
-#define H2O                      18.015f
-#define PROTON                   1.00727647
-
-/* Not an Amino Acid (NAA) mass */
-#define NAA                      -20000
-
 /* Global Mods Info  */
 SLM_vMods      gModInfo;
 
 extern gParams params;
 
 /* Amino Acids Masses */
-float_t AAMass[26] = {
+constexpr float_t AAMass[26] = {
                     71.03712,   // A
                     NAA,        // B
                     103.00919,  // C
@@ -76,37 +66,35 @@ float_t AAMass[26] = {
                     };
 
 /* Static Mods for Amino Acids */
-float_t StatMods[26] = {
-                      0,        // A
-                      0,        // B
-                      57.021464,// C + 57.02
-                      0,        // D
-                      0,        // E
-                      0,        // F
-                      0,        // G
-                      0,        // H
-                      0,        // I
-                      0,        // J
-                      0,        // K
-                      0,        // L
-                      0,        // M
-                      0,        // N
-                      0,        // O
-                      0,        // P
-                      0,        // Q
-                      0,        // R
-                      0,        // S
-                      0,        // T
-                      0,        // U
-                      0,        // V
-                      0,        // W
-                      0,        // X
-                      0,        // Y
-                      0,        // Z
-                      };
+constexpr float_t StatMods[26] = {
+                    0,        // A
+                    0,        // B
+                    57.021464,// C + 57.02
+                    0,        // D
+                    0,        // E
+                    0,        // F
+                    0,        // G
+                    0,        // H
+                    0,        // I
+                    0,        // J
+                    0,        // K
+                    0,        // L
+                    0,        // M
+                    0,        // N
+                    0,        // O
+                    0,        // P
+                    0,        // Q
+                    0,        // R
+                    0,        // S
+                    0,        // T
+                    0,        // U
+                    0,        // V
+                    0,        // W
+                    0,        // X
+                    0,        // Y
+                    0,        // Z
+                    };
 
-/* Macros to extract AA masses */
-#define GETAA(x,z)                 ((AAMass[AAidx(x)]) + (StatMods[AAidx(x)]) + ((PROTON) * (z)))
 
 status_t DBCounter(char_t *filename)
 {
@@ -116,8 +104,8 @@ status_t DBCounter(char_t *filename)
     string_t modconditions = params.modconditions;
     uint_t maxmass= params.max_mass;
     uint_t minmass= params.min_mass;
-	
-	ull_t localpeps = 0;
+
+    ull_t localpeps = 0;
 
 #ifndef VMODS
     UNUSED_PARAM(modconditions);

@@ -18,7 +18,6 @@
  */
 
 #include "lbe.h"
-#include "cuda/driver.hpp"
 #include "cuda/superstep1/kernel.hpp"
 using namespace std;
 
@@ -184,21 +183,8 @@ status_t LBE_Initialize(Index *index)
     {
 #if 1 //defined (GPU) && defined(CUDA)
 
-    // extract all peptide masses in an array to simplify computations
-    float_t *h_mzs = nullptr;
-    hcp::gpu::cuda::host_pinned_allocate<float_t>(h_mzs, index->lcltotCnt);
-
-#if defined (USE_OMP)
-#pragma omp parallel for num_threads(threads) schedule (static)
-#endif // USE_OMP
-        for (int i = 0; i < index->lcltotCnt; i++)
-            h_mzs[i] = index->pepEntries[i].Mass;
-
-        //sort by masses on GPU
-        hcp::gpu::cuda::s1::SortpepEntries(index, h_mzs);
-
-        // free the masses array
-        hcp::gpu::cuda::host_pinned_free(h_mzs);
+        // sort pepEntries on the GPU
+        hcp::gpu::cuda::s1::SortPeptideIndex(index);
 #else
         // directly sort the pepEntries on the CPU
         std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, [](pepEntry &e1, pepEntry &e2) { return e1 < e2; });

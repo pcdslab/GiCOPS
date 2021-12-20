@@ -62,9 +62,18 @@ namespace cuda
 namespace s1
 {
 
-__global__ void GenerateFragIonData(uint_t *, pepEntry *, char *, short, int, short, short, float_t, float_t);
-__global__ void GenerateFragIonData2(uint_t *, pepEntry *, char *, short, int, short, short, float_t, float_t);
+// -------------------------------------------------------------------------------------------- //
+
+// y = ceil(log2(x))
 __device__ int log2ceil(unsigned long long x);
+
+// kernel to generate the fragment ion data
+__global__ void GenerateFragIonData(uint_t *, pepEntry *, char *, short, int, short, short, float_t, float_t);
+
+// sort pepEntries sub-kernel
+__host__ void SortpepEntries(Index *, float_t *);
+
+// -------------------------------------------------------------------------------------------- //
 
 // initialize mod information
 __host__ void initMods(SLM_vMods *vMods)
@@ -94,8 +103,32 @@ __host__ void initMods(SLM_vMods *vMods)
     hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(statMass, statMods, sizeof(int) * 26));
 }
 
+// -------------------------------------------------------------------------------------------- //
+
+__host__ void SortPeptideIndex(Index *index)
+{
+    // extract all peptide masses in an array to simplify computations
+    float_t *h_mzs = nullptr;
+    hcp::gpu::cuda::host_pinned_allocate<float_t>(h_mzs, index->lcltotCnt);
+
+#if defined (USE_OMP)
+#pragma omp parallel for num_threads(threads) schedule (static)
+#endif // USE_OMP
+        // simplify the peptide masses
+        for (int i = 0; i < index->lcltotCnt; i++)
+            h_mzs[i] = index->pepEntries[i].Mass;
+
+        //sort by masses on GPU
+        SortpepEntries(index, h_mzs);
+
+        // free the masses array
+        hcp::gpu::cuda::host_pinned_free(h_mzs);
+}
+
+// -------------------------------------------------------------------------------------------- //
+
 // sort peptide entries by mass on GPU
-__host__ void SortpepEntries(Index *index, float_t *h_mz)
+void SortpepEntries(Index *index, float_t *h_mz)
 {
     auto pepIndex = index->pepEntries;
     auto size = index->lcltotCnt;
@@ -140,6 +173,8 @@ __host__ void SortpepEntries(Index *index, float_t *h_mz)
     return;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 // stable sort fragment-ion data on GPU
 __host__ void StableKeyValueSort(uint_t *d_keys, uint_t* h_data, int size)
 {
@@ -158,6 +193,8 @@ __host__ void StableKeyValueSort(uint_t *d_keys, uint_t* h_data, int size)
     return;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 __host__  uint_t*& getFragIon()
 {
     static uint_t *d_fragIon = nullptr;
@@ -168,6 +205,8 @@ __host__  uint_t*& getFragIon()
 
     return d_fragIon;
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 __host__ void freeFragIon()
 {
@@ -182,6 +221,8 @@ __host__ void freeFragIon()
 
     return;
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 // construct the index on the GPU
 __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
@@ -240,21 +281,10 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
     driver->stream_sync();
 
     // speclen will be the blockSize
-    int blockSize = speclen;
+    int blockSize = peplen_1 * iSERIES;
 
-    // which kernel to use
-    if (0)
-    {
-        // generate fragment ion data
-        GenerateFragIonData<<<interval, blockSize, sizeof(float_t) * speclen, driver->get_stream()>>>(d_fragIon, d_pepEntries, d_seqs, peplen, start_idx, scale, maxz, minmass, maxmass);
-    }
-    else
-    {
-        blockSize = peplen_1 * iSERIES;
-
-        // generate fragment ion data
-        GenerateFragIonData2<<<interval, blockSize, sizeof(float_t) * peplen_1, driver->get_stream()>>>(d_fragIon, d_pepEntries, d_seqs, peplen, start_idx, scale, maxz, minmass, maxmass);
-    }
+    // generate fragment ion data
+    GenerateFragIonData<<<interval, blockSize, sizeof(float_t) * peplen_1, driver->get_stream()>>>(d_fragIon, d_pepEntries, d_seqs, peplen, start_idx, scale, maxz, minmass, maxmass);
 
     driver->stream_sync();
 
@@ -276,111 +306,11 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
     return status;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 //
-// CUDA kernel to generate fragment ion data
+// compute y = log2(ceil(x))
 //
-__global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, char *d_seqs, short peplen, int start_idx, short scale, short maxz, float_t minmass, float_t maxmass)
-{
-    // block and thread Ids
-    short blockId  = blockIdx.x;
-    short threadId = threadIdx.x;
-    short blockSize = blockDim.x;
-    short speclen = blockDim.x;
-    short isYion  = threadId / (speclen/2);
-    short isBion  = 1 - isYion;
-
-    // CUDA's warpsize
-    // short warpsize = 32;
-
-    //short warpID = threadId / warpsize;
-    //short laneId = threadId % warpsize;
-
-    // pre-compute 
-    short peplen_1 = peplen - 1;
-    short myAA = (isBion)? (threadId % peplen_1) : peplen - (threadId % peplen_1);
-    short myCharge_1 = (threadId / peplen_1) % maxz;
-
-    short segmentidx = threadId / peplen_1;
-    short posidx = threadId % peplen_1;
-
-    // local peptide Entry
-    pepEntry *_entry = d_pepEntry + start_idx + blockId;
-
-    // local peptide sequence
-    char_t * _seq = &d_seqs[_entry->seqID * peplen];
-
-    // peptide m/z
-    float_t pepMass = _entry->Mass;
-
-    // pointer to spectrum data
-    uint_t *Spectrum = d_fragIon + speclen * (start_idx + blockId);
-
-    if (threadId < blockSize)
-        Spectrum[threadId] = 0;
-
-    // if valid peptide or variant
-    if (pepMass >= minmass && pepMass <= maxmass)
-    {
-        // myVal will contain the mass of the ion
-        float_t myVal = 0;
-
-        // shared memory to spill partial sums
-        __shared__ float pSums[iSERIES * MAXZ];
-
-        // shared memory to store spectra
-        extern __shared__ float_t f_Spectrum[];
-    
-        // ensure everything is initialized
-        __syncthreads();
-
-        // set my value to the amino acid mass
-        myVal += AAMASS(_seq[myAA]);
-
-        if (_entry->sites.modNum != 0)
-            if (_entry->sites.sites >> myAA)
-                myVal += MODMASS(_seq[myAA]);
-
-        // compute number of iterations
-        int iterations = log2ceil(blockSize);
-
-        // compute prefix sum
-        for (int i = 0; i < iterations; i ++)
-        {
-            int offset = 1 << i;
-
-            if (threadId >= offset)
-                f_Spectrum[threadId] += f_Spectrum[threadId - offset];
-
-            // make sure all writes are done
-            __syncthreads();
-        }
-
-        // copy to local variable
-        myVal = f_Spectrum[threadId];
-
-        // spill partial sum to shared memory
-        if (posidx == peplen_1 -1)
-            pSums[segmentidx] = myVal;
-
-        // only if segment idx is > 0
-        if (segmentidx > 0)
-            myVal -= pSums[segmentidx - 1];
-
-        // add z * protons + (isYion?) * H2O
-        myVal += PROTONS(myCharge_1 + 1) + (isYion * H2O);
-
-        // scale the mass and divide by charge to get the final m/z
-        myVal *= scale;
-        myVal /= (myCharge_1 + 1);
-
-        if (threadId < blockSize)
-            Spectrum[threadId] = myVal;
-    }
-
-    // do I need this?
-    // __syncthreads();
-}
-
 __device__ int log2ceil(unsigned long long x)
 {
     static const unsigned long long t[6] = {
@@ -407,10 +337,13 @@ __device__ int log2ceil(unsigned long long x)
   return y;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 //
-// Version 2 CUDA kernel to generate fragment ion data
+// CUDA kernel to generate fragment ion data
 //
-__global__ void GenerateFragIonData2(uint_t *d_fragIon, pepEntry *d_pepEntry, char *d_seqs, short peplen, int start_idx, short scale, short maxz, float_t minmass, float_t maxmass)
+__global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, char *d_seqs, short peplen, 
+                                    int start_idx, short scale, short maxz, float_t minmass, float_t maxmass)
 {
     // block and thread Ids
     short blockId  = blockIdx.x;
@@ -420,12 +353,6 @@ __global__ void GenerateFragIonData2(uint_t *d_fragIon, pepEntry *d_pepEntry, ch
     short isYion  = threadId / peplen_1;
     short isBion  = 1 - isYion;
 
-    // CUDA fixed warpsize
-    //short warpsize = 32;
-
-    //short warpID = threadId / warpsize;
-    //short laneId = threadId % warpsize;
-    
     // pre-compute
     short speclen = peplen_1 * iSERIES * maxz;
     short myAA = (isBion)? (threadId % peplen_1) : peplen - (threadId % peplen_1);
@@ -470,7 +397,7 @@ __global__ void GenerateFragIonData2(uint_t *d_fragIon, pepEntry *d_pepEntry, ch
 
         f_Spectrum[threadId] = myVal;
 
-        // make sure everything is synced
+        // make sure the write to shared memory is completed
         __syncthreads();
 
         // compute number of iterations
@@ -511,6 +438,8 @@ __global__ void GenerateFragIonData2(uint_t *d_fragIon, pepEntry *d_pepEntry, ch
     // do I need this?
     // __syncthreads();
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 } // namespace s1
 

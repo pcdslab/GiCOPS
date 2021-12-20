@@ -151,7 +151,6 @@ status_t main(int_t argc, char_t* argv[])
         status = UTILS_InitializeModInfo(&params.vModInfo);
     }
 
-
     // Initialize the ModGen Engine
     if (status == SLM_SUCCESS)
         status = MODS_Initialize();
@@ -607,14 +606,9 @@ static status_t ParseParams(char_t* paramfile)
             }
         }
 
-#ifdef USE_MPI
-        status = MPI_Comm_rank(MPI_COMM_WORLD, (int_t *)&params.myid);
-        status = MPI_Comm_size(MPI_COMM_WORLD, (int_t *)&params.nodes);
-#else
+        // Gicops supports only 1 node for now
         params.myid = 0;
         params.nodes = 1;
-
-#endif /* USE_MPI */
 
         pfile.close();
     }

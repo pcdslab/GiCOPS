@@ -50,6 +50,9 @@ status_t DSLIM_Construct(Index *index)
     double_t maxmass = params.max_mass;
     uint_t scale = params.scale;
 
+#if 0 //!(defined (GPU) && defined(CUDA))
+
+    // allocate memory to temporarily store the fragment ion data
     if (status == SLM_SUCCESS && SpecArr == NULL)
     {
         /* Spectra Array (SA) */
@@ -58,8 +61,8 @@ status_t DSLIM_Construct(Index *index)
         /* Check if Spectra Array has been allocated */
         if (SpecArr == NULL)
             status = ERR_BAD_MEM_ALLOC;
-
     }
+#endif // !(defined (GPU) && defined(CUDA))
 
     if (status == SLM_SUCCESS)
     {
@@ -72,6 +75,12 @@ status_t DSLIM_Construct(Index *index)
             /* Distributed SLM Ions Array construction */
             for (uint_t chno = 0; chno < index->nChunks && status == SLM_SUCCESS; chno++)
             {
+#if 1 //defined (GPU) && defined(CUDA)
+
+                // construct index on the GPU
+                status = hcp::gpu::cuda::s1::ConstructIndexChunk(index, chno);
+
+#else
                 /* Construct each DSLIM chunk in Parallel */
                 status = DSLIM_ConstructChunk(threads, index, chno);
 
@@ -79,10 +88,14 @@ status_t DSLIM_Construct(Index *index)
                 if (status == SLM_SUCCESS)
                     status = DSLIM_SLMTransform(threads, index, chno);
 
+#endif // defined (GPU) && defined(CUDA)
             }
         }
     }
 
+#if 0//defined (GPU) && defined(CUDA)
+
+    // construct bA on the CPU
     if (status == SLM_SUCCESS)
     {
         const uint_t speclen = peplen_1 * maxz * iSERIES;
@@ -122,17 +135,14 @@ status_t DSLIM_Construct(Index *index)
         }
     }
 
-    // no need to stablize the sort if already stable sorted
-
-#if 0 //defined (GPU) && defined(CUDA)
-    /* Optimize the CFIR index chunks */
+    // stablize the iA data
     if (status == SLM_SUCCESS)
     {
         for (uint_t chunk_number = 0; chunk_number < index->nChunks; chunk_number++)
             status = DSLIM_Optimize(index, chunk_number);
 
     }
-#endif //defined (GPU) && defined(CUDA)
+#endif //!(defined (GPU) && defined(CUDA))
 
     return status;
 }
@@ -718,11 +728,21 @@ status_t DSLIM_DeallocatePepIndex(Index *index)
 
 status_t DSLIM_DeallocateSpecArr()
 {
-    if (SpecArr != NULL)
+#if 1 // defined (GPU) && defined(CUDA)
+
+    // free the fragment ion data memory on GPU
+    hcp::gpu::cuda::s1::freeFragIon();
+
+#else
+
+    // free SpecArr on CPU
+    if (SpecArr != nullptr)
     {
         delete[] SpecArr;
-        SpecArr= NULL;
+        SpecArr= nullptr;
     }
+
+#endif // defined (GPU) && defined(CUDA)
 
     /* Nothing really to return
      * so success */

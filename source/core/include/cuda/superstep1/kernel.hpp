@@ -37,12 +37,20 @@ namespace s1
 // function to initialize mods
 void initMods(SLM_vMods *vMods);
 
+// function to compute partial sums
+void exclusiveScan(uint_t *array, int size, int init = 0);
+
+// function to sort the peptide index
 void SortPeptideIndex(Index *index);
 
+// function to comnstruct a complete chunk of the DSLIM index (both iA and bA)
 status_t ConstructIndexChunk(Index *index, int_t chunk_number);
 
-// kernel to stable sort fragment-ion data
+// kernel to stable sort the fragment-ion data
 void StableKeyValueSort(uint_t *keys, uint_t* data, int size);
+
+// free the device memory allocated for the fragment ion data
+void freeFragIon();
 
 } // namespace s1
 

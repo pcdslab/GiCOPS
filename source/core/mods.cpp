@@ -19,6 +19,7 @@
 
 #include "mods.h"
 #include "lbe.h"
+#include "cuda/superstep1/kernel.hpp"
 
 using namespace std;
 
@@ -410,20 +411,29 @@ ull_t MODS_ModCounter()
             cumulative += varCount[i];
         }
 
-        // redundant code to test correctness
+        // compute prefix sum
 
-        //uint_t count = varCount[0];
-        //varCount[0] = 0;
+#if 1 // defined(USE_OMP) && defined(USE_GPU)
 
-        // FIXME: compute partial sums in parallel.
-        //for (uint_t ii = 1; ii <= Seqs.size(); ii++)
-        //{
-        //    uint_t tmpcount = varCount[ii];
-        //    varCount[ii] = varCount[ii - 1] + count;
-        //    count = tmpcount;
-        //}
+        // compute prefix scan on GPU
+        hcp::gpu::cuda::s1::exclusiveScan(varCount, Seqs.size() + 1, 0);
+#else
+        // compute on CPU
+        uint_t count = varCount[0];
+        varCount[0] = 0;
+
+        // compute partial sums
+        for (uint_t ii = 1; ii <= Seqs.size(); ii++)
+        {
+            uint_t tmpcount = varCount[ii];
+            varCount[ii] = varCount[ii - 1] + count;
+            count = tmpcount;
+        }
+
+#endif // USE_OMP && USE_GPU
 
         // assert only works in build mode
+
         // if (varCount[Seqs.size()] != cumulative) 
         //    std::cerr << "FATAL: varCount[Seqs.size()] != cumulative for peplen: " << Seqs[0].size() << std::endl;
     }

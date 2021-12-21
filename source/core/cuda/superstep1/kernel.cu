@@ -25,8 +25,12 @@
 #include <thrust/copy.h>
 #include <thrust/fill.h>
 #include <thrust/sort.h>
+#include <thrust/scan.h>
 #include <thrust/sequence.h>
 #include <thrust/transform.h>
+#include <thrust/binary_search.h>
+#include <thrust/functional.h>
+#include <thrust/execution_policy.h>
 
 #include "cuda/driver.hpp"
 #include "cuda/superstep1/kernel.hpp"
@@ -73,6 +77,9 @@ __global__ void GenerateFragIonData(uint_t *, pepEntry *, char *, short, int, sh
 // sort pepEntries sub-kernel
 __host__ void SortpepEntries(Index *, float_t *);
 
+// compute bA from the sorted fragment-ion data
+__host__ void ConstructbA(Index *index, size_t iAsize, uint chunk_number);
+
 // -------------------------------------------------------------------------------------------- //
 
 // initialize mod information
@@ -105,6 +112,19 @@ __host__ void initMods(SLM_vMods *vMods)
 
 // -------------------------------------------------------------------------------------------- //
 
+__host__ void exclusiveScan(uint_t *array, int size, int init)
+{
+    // initialize a device vector
+    thrust::device_vector<uint_t> d_array(array, array + size);
+
+    // compute exclusive scan
+    thrust::exclusive_scan(thrust::device, d_array.begin(), d_array.end(), d_array.begin(), init);
+
+    // copy back to host
+    thrust::copy(d_array.begin(), d_array.end(), array);
+}
+
+// -------------------------------------------------------------------------------------------- //
 __host__ void SortPeptideIndex(Index *index)
 {
     // extract all peptide masses in an array to simplify computations
@@ -293,6 +313,9 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
     // Stable keyValue sort the fragment-ion data and copy to iAPtr
     StableKeyValueSort(d_fragIon, iAPtr, iAsize);
 
+    // construct corresponding DSLIM.bA
+    ConstructbA(index, iAsize, chunk_number);
+
     // free memory
     if (lastChunk == true)
     {
@@ -304,6 +327,29 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
     }
 
     return status;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+__host__ void ConstructbA(Index *index, size_t iAsize, uint chunk_number)
+{
+    // size of the bA
+    uint_t bAsize = ((uint_t)(params.max_mass * params.scale)) + 1;
+
+    // device vector for fragment-ion data
+    auto d_sortedFragIon = getFragIon();
+
+    // device vector for bA data
+    thrust::device_vector<uint_t> d_bA(bAsize);
+
+    // enumerate indices
+    thrust::sequence(d_bA.begin(), d_bA.end());
+
+    // binary search the start of each ion and store in d_bA
+    thrust::lower_bound(thrust::device, d_sortedFragIon, d_sortedFragIon + iAsize, d_bA.begin(), d_bA.end(), d_bA.begin());
+
+    // copy bA data back to CPU
+    thrust::copy(d_bA.begin(), d_bA.end(), index->ionIndex[chunk_number].bA);
 }
 
 // -------------------------------------------------------------------------------------------- //

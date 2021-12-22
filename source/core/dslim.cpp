@@ -43,14 +43,15 @@ extern gParams params;
 status_t DSLIM_Construct(Index *index)
 {
     status_t status = SLM_SUCCESS;
+
+#if 0 //!(defined (GPU) && defined(CUDA))
+
     uint_t threads = params.threads;
     uint_t maxz = params.maxz;
     uint_t peplen_1 = index->pepIndex.peplen - 1;
 
     double_t maxmass = params.max_mass;
     uint_t scale = params.scale;
-
-#if 0 //!(defined (GPU) && defined(CUDA))
 
     // allocate memory to temporarily store the fragment ion data
     if (status == SLM_SUCCESS && SpecArr == NULL)
@@ -62,6 +63,7 @@ status_t DSLIM_Construct(Index *index)
         if (SpecArr == NULL)
             status = ERR_BAD_MEM_ALLOC;
     }
+
 #endif // !(defined (GPU) && defined(CUDA))
 
     if (status == SLM_SUCCESS)
@@ -81,6 +83,7 @@ status_t DSLIM_Construct(Index *index)
                 status = hcp::gpu::cuda::s1::ConstructIndexChunk(index, chno);
 
 #else
+
                 /* Construct each DSLIM chunk in Parallel */
                 status = DSLIM_ConstructChunk(threads, index, chno);
 
@@ -140,8 +143,8 @@ status_t DSLIM_Construct(Index *index)
     {
         for (uint_t chunk_number = 0; chunk_number < index->nChunks; chunk_number++)
             status = DSLIM_Optimize(index, chunk_number);
-
     }
+
 #endif //!(defined (GPU) && defined(CUDA))
 
     return status;

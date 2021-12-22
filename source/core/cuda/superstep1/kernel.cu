@@ -303,8 +303,10 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
     // speclen will be the blockSize
     int blockSize = peplen_1 * iSERIES;
 
+    int shmemBytes = blockSize * sizeof(float_t);
+
     // generate fragment ion data
-    GenerateFragIonData<<<interval, blockSize, sizeof(float_t) * peplen_1, driver->get_stream()>>>(d_fragIon, d_pepEntries, d_seqs, peplen, start_idx, scale, maxz, minmass, maxmass);
+    GenerateFragIonData<<<interval, blockSize, shmemBytes, driver->get_stream()>>>(d_fragIon, d_pepEntries, d_seqs, peplen, start_idx, scale, maxz, minmass, maxmass);
 
     driver->stream_sync();
 
@@ -391,8 +393,10 @@ __device__ int log2ceil(unsigned long long x)
 __global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, char *d_seqs, short peplen, 
                                     int start_idx, short scale, short maxz, float_t minmass, float_t maxmass)
 {
-    // block and thread Ids
-    short blockId  = blockIdx.x;
+    // blockId MUST be int type
+    int   blockId  = blockIdx.x;
+
+    // thread and block sizes could be short
     short threadId = threadIdx.x;
     short blockSize = blockDim.x;
     short peplen_1 = peplen - 1;
@@ -401,7 +405,7 @@ __global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, cha
 
     // pre-compute
     short speclen = peplen_1 * iSERIES * maxz;
-    short myAA = (isBion)? (threadId % peplen_1) : peplen - (threadId % peplen_1);
+    short myAA = (isBion)? (threadId % peplen_1) : peplen_1 - (threadId % peplen_1);
 
     // local peptide Entry
     pepEntry *_entry = d_pepEntry + start_idx + blockId;
@@ -413,7 +417,7 @@ __global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, cha
     float_t pepMass = _entry->Mass;
 
     // pointer to spectrum data
-    uint_t *Spectrum = d_fragIon + speclen * (start_idx + blockId);
+    uint_t *Spectrum = d_fragIon + (speclen * blockId);
 
     // write zeros to the entire spectrum
     for (int i = threadId; i < speclen; i += blockSize)
@@ -441,6 +445,7 @@ __global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, cha
             if (_entry->sites.sites >> myAA)
                 myVal += MODMASS(_seq[myAA]);
 
+        // copy to shared memory
         f_Spectrum[threadId] = myVal;
 
         // make sure the write to shared memory is completed
@@ -462,26 +467,29 @@ __global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, cha
         }
 
         // copy from shared memory
-        myVal = f_Spectrum[threadId];
+        myVal = f_Spectrum[threadId] + (isYion * H2O);
 
         // spill bIONs sum to the shared memory
         if (threadId == peplen_1 -1)
             pSums[0] = myVal;
 
+        // make sure all shm writes are done
+        __syncthreads();
+
         // only if charge idx is > 0
         if (isYion)
             myVal -= pSums[0];
 
-        // FIXME: This needs a second look.
-        for (int i = threadId; i < speclen/2; i += peplen_1)
+        // compute multiple charges and protons
+        for (int i = 0; i < maxz; i++)
         {
-            int myCharge = (i/peplen_1) + 1;
-            float addVal = PROTONS(myCharge) + (isYion * H2O);
-            Spectrum[(speclen/2) * isYion + threadId] = (myVal + addVal) * scale / myCharge;
+            int myCharge = i + 1;
+            int idx = (speclen/2 - peplen_1) * isYion +  i * peplen_1 + threadId;
+            Spectrum[idx] = (myVal + PROTONS(myCharge)) * scale / myCharge;
         }
     }
 
-    // do I need this?
+    // do we need this?
     // __syncthreads();
 }
 

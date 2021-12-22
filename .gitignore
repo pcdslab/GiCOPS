@@ -95,6 +95,9 @@ __pycache__/
 # C extensions
 *.so
 
+# tmp files
+~~*
+
 # Distribution / packaging
 .Python
 env/

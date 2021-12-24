@@ -129,13 +129,9 @@ status_t LBE_Initialize(Index *index)
 
     /* Check if ">" entries are > 0 */
     if (index->lclpepCnt > 0)
-    {
         status = LBE_AllocateMem(index);
-    }
     else
-    {
         status = ERR_INVLD_PARAM;
-    }
 
     /* If Seqs was successfully filled */
     if (Seqs.size() != 0 && status == SLM_SUCCESS)
@@ -410,6 +406,9 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
     index->pepCount = 0;
     index->modCount = 0;
 
+    // print current progress
+    printProgress(Database Indexing);
+
     /* Open file */
     file.open(filename);
 
@@ -486,26 +485,3 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
 
     return status;
 }
-
-/*
- * FUNCTION: LBE_PrintHeader
- *
- * DESCRIPTION: Prints the LBE header
- *
- * INPUT : none
- * OUTPUT: none
- */
-VOID LBE_PrintHeader()
-{
-    std::cout << "\n"
-            "***************************************\n"
-            "* HiCOPS: HPC Database Peptide Search *\n"
-            "* School of Computing & Info Sciences *\n"
-            "*   Florida International University  *\n"
-            "*         Miami, Florida, USA         *\n"
-            "***************************************\n"
-          << std::endl << std::endl;
-
-    return;
-}
-

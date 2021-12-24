@@ -175,8 +175,8 @@ status_t DSLIM_SearchManager(Index *index)
     wall_tuple_t init("MS2_init");
 #endif // USE_TIMEMORY
 
-    if (params.myid == 0)
-        std::cout << std::endl << "*** Initializing MS2 ***" << std::endl;
+    // print current progress
+    printProgress(MS2 Index Initialization);
 
     MARK_START(ms2init);
 
@@ -256,7 +256,6 @@ status_t DSLIM_SearchManager(Index *index)
 
             if (CommHandle == NULL)
                 status = ERR_BAD_MEM_ALLOC;
-
         }
 
         if (status == SLM_SUCCESS)
@@ -287,7 +286,7 @@ status_t DSLIM_SearchManager(Index *index)
 
     if (params.myid == 0)
     {
-        std::cout << "DONE: MS2 Init: \tstatus: " << status << std::endl;
+        std::cout << "DONE: MS2 Index Init: \tstatus: " << status << std::endl;
         PRINT_ELAPSED(ELAPSED_SECONDS(ms2init));
     }
 
@@ -298,6 +297,10 @@ status_t DSLIM_SearchManager(Index *index)
     //
     // Parallel Search
     //
+
+    // print current progress
+    printProgress(Database Search);
+
 #if defined (USE_TIMEMORY)
         static search_tuple_t search_inst("SearchAlg");
         search_inst.start();

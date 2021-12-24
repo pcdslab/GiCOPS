@@ -56,5 +56,20 @@
 
 // ------------------------------------------------------------------------------------ //
 
-#define printVar(x)                      std::cout << #x << " = " << x << std::endl
-#define print2Vars(x, y)                  std::cout << #x << " = " << x << ", " << #y << " = " << y << std::endl
+#define printVar(x)                     std::cout << #x << " = " << x << std::endl
+#define print2Vars(x, y)                std::cout << #x << " = " << x << ", " << #y << " = " << y << std::endl
+
+#define printProgress(x)                if (params.myid == 0)                               \
+                                            std::cout << std::endl << "---- " << #x << " ----" << std::endl << std::endl
+
+#define printHeader(x, y)                                                   \
+{                                                                           \
+    std::cout << "\n"                                                       \
+            "|-------------------------------------|\n"                     \
+            "| " << #x << ": " << #y << " Database Peptide Search |\n"      \
+            "|          PCDSLab, KFSCIS            |\n"                     \
+            "|   Florida International University  |\n"                     \
+            "|         Miami, Florida, USA         |\n"                     \
+            "|-------------------------------------|\n"                     \
+        << std::endl << std::endl;                                          \
+}

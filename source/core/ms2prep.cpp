@@ -130,8 +130,8 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
         // get local partition size
         auto pfiles = hcp::mpi::getPartitionSize(nfiles);
 
-        if (params.nodes > 1)
-            MSQuery::init_index();
+        // initialize the MSQuery index
+        MSQuery::init_index();
 
         // if pfiles > 0
         if (pfiles) 
@@ -205,7 +205,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
         nBatches = ptrs[nfiles-1]->Curr_chunk() + ptrs[nfiles-1]->Nqchunks();
 
         if (params.myid == 0)
-            std::cout << "\nDataset Size = " << dssize << std::endl << std::endl;
+            std::cout << "Dataset Size = " << dssize << std::endl << std::endl;
     }
     
     return status;

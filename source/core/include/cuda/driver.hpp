@@ -150,7 +150,7 @@ public:
     // FIXME: Only ONE instance per MPI process
     static driver* get_instance()
     {
-        static driver instance;
+        static thread_local driver instance;
         return &instance;
     }
 };

@@ -106,7 +106,7 @@ status_t main(int_t argc, char_t* argv[])
     // Print HiCOPS header after the ranks have been assigned
     if (params.myid == 0)
     {
-        LBE_PrintHeader();
+        printHeader(GiCOPS, GPU);
         std::cout << std::endl << "Start Time: " << ctime(&start_time) << std::endl;
     }
 

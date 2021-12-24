@@ -72,6 +72,10 @@ status_t DSLIM_DistScoreManager()
     status_t status = SLM_SUCCESS;
 
 #ifdef USE_MPI
+
+    // print current progress
+    printProgress(Merging Scores);
+
     /* Check if parameters have been brought */
     if (isCarried == false && params.nodes > 1)
         status = ERR_INVLD_PARAM;
@@ -155,7 +159,6 @@ status_t DSLIM_DistScoreManager()
 
             if (params.myid == 0)
                 std::cout << "Writing Results with status:\t" << status << std::endl;
-
         }
 
         //
@@ -194,7 +197,7 @@ status_t DSLIM_DistScoreManager()
         }
     }
 
-#endif /* USE_MPI */
+#endif // USE_MPI
 
     /* Return the status of execution */
     return status;

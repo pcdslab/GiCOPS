@@ -19,7 +19,10 @@
 
 #pragma once
 
+#if defined USE_MPI
 #include <mpi.h>
+#endif // USE_MPI
+
 #include "common.hpp"
 #include "msquery.hpp"
 #include "lwqueue.h"

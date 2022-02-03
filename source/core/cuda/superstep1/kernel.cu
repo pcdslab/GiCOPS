@@ -105,9 +105,9 @@ __host__ void initMods(SLM_vMods *vMods)
     }
 
     // copy to CUDA constant arrays
-    hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(modMass, vMass, sizeof(int) * 26));
-    hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(aaMass, AAMass, sizeof(int) * 26));
-    hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(statMass, statMods, sizeof(int) * 26));
+    hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(modMass, vMass, sizeof(float_t) * ALPHABETS));
+    hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(aaMass, AAMass, sizeof(float_t) * ALPHABETS));
+    hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(statMass, statMods, sizeof(float_t) * ALPHABETS));
 }
 
 // -------------------------------------------------------------------------------------------- //

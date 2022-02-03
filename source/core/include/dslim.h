@@ -181,7 +181,7 @@ status_t DSLIM_SearchManager(Index *);
  * OUTPUT:
  * @status: Status of execution
  */
-status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t indexchunks);
+status_t DSLIM_QuerySpectrum(Queries<int> *ss, Index *index, uint_t indexchunks);
 
 /* FUNCTION: DSLIM_WriteLIBSVM
  *

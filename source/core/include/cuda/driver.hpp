@@ -41,7 +41,7 @@ static inline void check(T result, const char *const file, const int line, bool 
     {
         std::cerr << "CUDA error at " << file << ":" << line << std::endl;
         std::cerr << cudaGetErrorString(result) << std::endl;
-        
+
         if (is_fatal)
             exit(result);
     }

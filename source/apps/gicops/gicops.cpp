@@ -119,7 +119,8 @@ status_t main(int_t argc, char_t* argv[])
         while ((pdir = readdir(dir)) != NULL)
         {
             string_t cfile(pdir->d_name);
-
+            cfile = cfile.substr(cfile.find_last_of("."));
+            
             /* Add the matching files */
             if (cfile.find(patt) != std::string::npos)
                 queryfiles.push_back(params.datapath + '/' + pdir->d_name);

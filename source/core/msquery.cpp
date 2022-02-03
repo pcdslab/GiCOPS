@@ -20,6 +20,22 @@
 
 using namespace std;
 
+#define BIN_BATCHSIZE        50000
+#define TEMPVECTOR_SIZE      KBYTES(20)
+
+// Check for integer type at compile time
+template<typename T>
+struct TypeIsInt
+{
+    static const bool value = false;
+};
+
+template<>
+struct TypeIsInt<int>
+{
+    static const bool value = true;
+};
+
 extern gParams params;
 
 #ifdef USE_MPI
@@ -37,19 +53,12 @@ std::ofstream *fh;
 
 MSQuery::MSQuery()
 {
-    qfile = NULL;
+    qfile = nullptr;
     currPtr = 0;
     curr_chunk = 0;
     running_count = 0;
-    spectrum.intn = NULL;
     qfileIndex = 0;
     m_isinit = false;
-    spectrum.mz = NULL;
-    spectrum.SpectrumSize = 0;
-    spectrum.prec_mz = 0;
-    spectrum.Z = 0;
-    spectrum.rtime = 0;
-
 }
 
 MSQuery::~MSQuery()
@@ -66,17 +75,8 @@ MSQuery::~MSQuery()
         qfile = NULL;
     }
 
-    if (spectrum.intn != NULL)
-    {
-        delete[] spectrum.intn;
-        spectrum.intn = NULL;
-    }
-
-    if (spectrum.mz != NULL)
-    {
-        delete[] spectrum.mz;
-        spectrum.mz = NULL;
-    }
+    if (!BINMS2)
+        spectrum.deallocate();
 
     spectrum.SpectrumSize = 0;
     spectrum.prec_mz = 0;
@@ -84,34 +84,17 @@ MSQuery::~MSQuery()
     spectrum.rtime = 0;
 }
 
-/*
- * FUNCTION:
- *
- * DESCRIPTION: Initialize structures using the query file
- *
- * INPUT:
- * @filename : Path to query file
- *
- * OUTPUT:
- * @status: Status of execution
- */
-status_t MSQuery::initialize(string_t *filename, int_t fno)
+//
+// function to read MS2 files
+//
+std::array<int, 2> MSQuery::readMS2file(string *filename)
 {
-    status_t status = SLM_SUCCESS;
-
     /* Get a new ifstream object and open file */
     ifstream *qqfile = new ifstream(*filename);
 
     int_t largestspec = 0;
     int_t count = 0;
     int_t specsize = 0;
-
-    /* Check allocation
-    if (qqfile == NULL)
-    {
-        status = ERR_INVLD_PARAM;
-    }*/
-
     /* Check if file opened */
     if (qqfile->is_open() /*&& status =SLM_SUCCESS*/)
     {
@@ -148,32 +131,196 @@ status_t MSQuery::initialize(string_t *filename, int_t fno)
             }
         }
 
+        // check if the last spectrum in the file is the largest
         largestspec = max(specsize, largestspec);
 
-        /* Check the largestspecsize */
-        if (largestspec < 1)
+        /* Close the file */
+        qqfile->close();
+
+        delete qqfile;
+
+    }
+    else
+        cout << "Error: Unable to open qqfile: " << *filename << endl;
+
+    largestspec = max(specsize, largestspec);
+
+    return std::array<int, 2>{count, largestspec};
+}
+
+std::array<int, 2> MSQuery::convertAndprepMS2bin(string *filename)
+{
+    int_t largestspec = 0;
+    int_t count = 0;
+    int_t globalcount = 0;
+    int_t specsize = 0;
+
+    char_t *Zsave;
+    char_t *Isave;
+
+    std::vector<spectype_t> mzs;
+    std::vector<spectype_t> intns;
+
+    // reverse 20 * 1024 vector length
+    mzs.reserve(TEMPVECTOR_SIZE);
+    intns.reserve(TEMPVECTOR_SIZE);
+
+    spectype_t *m_mzs = new spectype_t[BIN_BATCHSIZE * 2 * QALEN];
+    spectype_t *m_intns = m_mzs + (BIN_BATCHSIZE * QALEN);
+
+    int    m_idx = 0;
+
+    float *rtimes = new float[2 * BIN_BATCHSIZE];
+    float *prec_mz = rtimes + BIN_BATCHSIZE;
+
+    int *z = new int[2 * BIN_BATCHSIZE];
+    int *lens = z + BIN_BATCHSIZE;
+
+    /* Get a new ifstream object and open file */
+    ifstream *qqfile = new ifstream(*filename);
+
+    /* Check if file opened */
+    if (qqfile->is_open())
+    {
+        string_t line;
+        bool isFirst = true;
+
+        /* While we still have lines in MS2 file */
+        while (!qqfile->eof())
         {
-            status = ERR_INVLD_SIZE;
+            /* Read one line */
+            getline(*qqfile, line);
+
+            if (line.empty() || line[0] == 'H' || line[0] == 'D')
+            {
+                continue;
+            }
+            /* Scan: (S) */
+            else if (line[0] == 'S')
+            {
+                if (!isFirst)
+                {
+                    largestspec = max(specsize, largestspec);
+
+                    // specsize will update here
+                    pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
+
+                    // write the updated specsize
+                    lens[count] = specsize;
+                    m_idx += specsize;
+
+                    count++;
+                    globalcount++;
+
+                    // if the buffer is full, then dump to file
+                    if (count == BIN_BATCHSIZE)
+                    {
+                        // flush to the binary file
+                        flushBinaryFile(filename, m_mzs, m_intns, rtimes, prec_mz, z, lens, count);
+
+                        count = 0;
+                        m_idx = 0;
+                    }
+                }
+                else
+                    isFirst = false;
+
+                specsize = 0;
+
+            }
+            else if (line[0] == 'Z')
+            {
+                char_t *mh = strtok_r((char_t *) line.c_str(), " \t", &Zsave);
+                mh = strtok_r(NULL, " \t", &Zsave);
+                string_t val = "1";
+
+                if (mh != NULL)
+                    val = string_t(mh);
+
+                z[count] = MAX(1, std::atoi(val.c_str()));
+
+                val = "0.01";
+                mh = strtok_r(NULL, " \t", &Zsave);
+
+                if (mh != NULL)
+                    val = string_t(mh);
+
+                prec_mz[count] = std::atof(val.c_str());
+            }
+            else if (line[0] == 'I')
+            {
+                char_t *mh = strtok_r((char_t *) line.c_str(), " \t", &Isave);
+                mh = strtok_r(NULL, " \t", &Isave);
+                string_t val = "";
+
+                if (mh != NULL)
+                {
+                    val = string_t(mh);
+                }
+
+                if (val.compare("RTime") == 0)
+                {
+                    val = "0.00";
+                    mh = strtok_r(NULL, " \t", &Isave);
+
+                    if (mh != NULL)
+                    {
+                        val = string_t(mh);
+                    }
+
+                    rtimes[count] = MAX(0.0, std::atof(val.c_str()));
+                }
+            }
+            /* MS/MS data: [m/z] [int] */
+            else
+            {
+                /* Split line into two DOUBLEs
+                 * using space as delimiter */
+
+                char_t *mz1 = strtok_r((char_t *) line.c_str(), " ", &Zsave);
+                char_t *intn1 = strtok_r(NULL, " ", &Zsave);
+                string_t mz = "0.01";
+                string_t intn = "0.01";
+
+                if (mz1 != NULL)
+                {
+                    mz = string_t(mz1);
+                }
+
+                if (intn1 != NULL)
+                {
+                    intn = string_t(intn1);
+                }
+
+                // integrize the values if spectype_t is int
+                if (TypeIsInt<spectype_t>::value)
+                {
+                    mzs.push_back(std::move(std::atof(mz.c_str()) * params.scale));
+                    intns.push_back(std::move(std::atof(intn.c_str()) * 1000));
+                }
+                else
+                {
+                    mzs.push_back(std::move(std::atof(mz.c_str())));
+                    intns.push_back(std::move(std::atof(intn.c_str())));
+                }
+
+                // increment the spectrum size
+                specsize++;
+            }
         }
 
-        /* Initialize the file related params */
-        if (status == SLM_SUCCESS)
-        {
-            currPtr  = 0;
-            info.QAcount = count;
-            MS2file = *filename;
-            curr_chunk = 0;
-            running_count = 0;
-            info.nqchunks = std::ceil(((double) info.QAcount / QCHUNK));
-            qfileIndex = fno;
-            info.maxslen = max(specsize, largestspec);
+        largestspec = max(specsize, largestspec);
+        lens[count] = specsize;
 
-            /* Initialize to largest spectrum in file */
-            spectrum.intn = new uint_t[info.maxslen + 1];
-            spectrum.mz = new uint_t[info.maxslen + 1];
+        m_idx += specsize;
 
-            m_isinit = true;
-        }
+        pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
+
+        count++;
+        globalcount++;
+
+        // flush to the binary file
+        flushBinaryFile(filename, m_mzs, m_intns, rtimes, prec_mz, z, lens, count, true);
 
         /* Close the file */
         qqfile->close();
@@ -181,7 +328,182 @@ status_t MSQuery::initialize(string_t *filename, int_t fno)
         delete qqfile;
     }
     else
-        status = ERR_FILE_NOT_FOUND;
+        cout << "Error: Unable to open qqfile: " << *filename << endl;
+
+    largestspec = max(specsize, largestspec);
+
+    // delete the temp arrays
+    delete[] m_mzs;
+    delete[] rtimes;
+    delete[] z;
+
+    // return global count and largest spectrum length
+    return std::array<int, 2>{globalcount, largestspec};
+
+}
+
+template<typename T>
+status_t MSQuery::pickpeaks(std::vector<T> &mzs, std::vector<T> &intns, int &specsize, int m_idx, T *m_intns, T *m_mzs)
+{
+    int_t SpectrumSize = specsize;
+
+    auto intnArr = m_intns + m_idx;
+    auto mzArr = m_mzs + m_idx;
+
+    if (SpectrumSize > 0)
+    {
+        KeyVal_Parallel<T, T>(intns.data(), mzs.data(), (uint_t)SpectrumSize, 1);
+
+        // intensity normalization applied
+        double factor = ((double_t) params.base_int / intns[SpectrumSize - 1]);
+
+        // filter out intensities > params.min_int (or 1% of base peak)
+        auto l_min_int = params.min_int; //0.01 * dIntArr[SpectrumSize - 1];
+
+        // TODO: choose either one and discard the other code for intensity normalization
+#if 1
+
+        /* Set the highest peak to base intensity */
+        intns[SpectrumSize - 1] = params.base_int;
+        int newspeclen = 1;
+
+        /* Scale the rest of the peaks to the base peak */
+        for (int_t j = SpectrumSize - 2; j >= (SpectrumSize - QALEN) && j >= 0; j--)
+        {
+            intns[j] *= factor;
+
+            if (intns[j] >= l_min_int)
+            {
+                newspeclen++;
+            }
+        }
+#else
+        // STL-based code for intensity normalization
+            
+        // beginning position of noramlization region
+        auto bpos = intns.begin();
+
+        if (SpectrumSize > QALEN)
+            bpos = intns.end() - QALEN;
+
+        // apply normalization
+        std::for_each(bpos, intns.end(), [&](T &x) { x *= factor; });
+
+        // find the position of the peak > min_int
+        auto p_beg = std::lower_bound(bpos, intns.end(), l_min_int);
+        int newspeclen = std::distance(p_beg, intns.end());
+
+#endif // 1
+
+        /* Check the size of spectrum */
+        if (newspeclen >= QALEN)
+        {
+            /* Copy the last QALEN elements to expSpecs */
+            std::copy(mzs.end() - QALEN, mzs.end(), mzArr);
+            std::copy(intns.end() - QALEN, intns.end(), intnArr);
+
+            // if larger than QALEN then only write the last QALEN elements and set the new length
+            newspeclen = QALEN;
+        }
+        else
+        {
+            /* Copy the last QALEN elements to expSpecs */
+            std::copy(mzs.end() - newspeclen, mzs.end(), mzArr);
+            std::copy(intns.end() - newspeclen, intns.end(), intnArr);
+        }
+
+            // assign the new length to specsize
+            specsize = newspeclen;
+    }
+    else
+    {
+        std::cerr << "Spectrum size is zero" << endl;
+        //std::fill(intns.begin(), intns.end(), 0);
+    }
+
+    mzs.clear();
+    intns.clear();
+
+    return SLM_SUCCESS;
+}
+
+template <typename T>
+void MSQuery::flushBinaryFile(string *filename, T *m_mzs, T *m_intns, float *rtimes, float *prec_mz, int *z, int *lens, int count, bool close)
+{
+    static std::ofstream qbFile(*filename + ".bin", ios::binary);
+
+    if (qbFile.is_open())
+    {
+        int ind = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            qbFile.write((char *)&prec_mz[i], sizeof(float));
+            qbFile.write((char *)&z[i], sizeof(int));
+            qbFile.write((char *)&rtimes[i], sizeof(float));
+            qbFile.write((char *)&lens[i], sizeof(int));
+
+            qbFile.write((char *)&m_mzs[ind], sizeof(T) * lens[i]);
+            qbFile.write((char *)&m_intns[ind], sizeof(T) * lens[i]);
+
+            ind += lens[i];
+        }
+    }
+    else
+        std::cerr << "Could not open file " << filename << ".bin" << std::endl;
+
+    if (close)
+    {
+        qbFile.flush();
+        qbFile.close();
+    }
+}
+
+/*
+ * FUNCTION:
+ *
+ * DESCRIPTION: Initialize structures using the query file
+ *
+ * INPUT:
+ * @filename : Path to query file
+ *
+ * OUTPUT:
+ * @status: Status of execution
+ */
+status_t MSQuery::initialize(string_t *filename, int_t fno)
+{
+    status_t status = SLM_SUCCESS;
+
+    // FIXME condition at which it will depend
+    auto vals = (BINMS2)? convertAndprepMS2bin(filename): readMS2file(filename);
+
+    auto largestspec = vals[1];
+    auto globalcount = vals[0];
+
+    /* Check the largestspecsize */
+    if (largestspec < 1)
+        status = ERR_INVLD_SIZE;
+    else
+    {
+        currPtr  = 0;
+        info.QAcount = globalcount;
+        MS2file = *filename;
+        curr_chunk = 0;
+        running_count = 0;
+        info.nqchunks = std::ceil(((double) info.QAcount / QCHUNK));
+        qfileIndex = fno;
+        info.maxslen = largestspec;
+
+        // FIXME: Fix with proper conditions
+        if (!BINMS2)
+            // allocate memory for the largest spectrum in file
+            spectrum.allocate(info.maxslen + 1);
+        else
+        // binary file
+            MS2file += ".bin";
+
+        m_isinit = true;
+    }
 
     /* Return the status */
     return status;
@@ -202,39 +524,75 @@ void MSQuery::vinitialize(string_t *filename, int_t fno)
     qfileIndex = fno;
 
     // init to the largest spectrum in file
-    spectrum.intn = new uint_t[info.maxslen + 1];
-    spectrum.mz = new uint_t[info.maxslen + 1];
+    spectrum.intn = new spectype_t[info.maxslen + 1];
+    spectrum.mz = new spectype_t[info.maxslen + 1];
+
     m_isinit = true;
 }
 
-status_t MSQuery::init_index()
+//
+// initialize the binary MS2 file index if needed
+//
+bool MSQuery::init_index()
 {
-    string fname = params.datapath + "/summary.io";
+    bool summaryExists = false;
 
+    string_t fname = params.datapath + "/summary.io";
+
+    // function to check if a file exists
+    auto fileexists = [](const string_t &fname) -> bool
+    {
+    // COMPILER VERSION GCC 9.1.0+ required 
+#if __GNUC__ > 9 || (__GNUC__ == 9 && (__GNUC_MINOR__ >= 1))
+        // COMPILER VERSION GCC 9.1.0+ required for std::filesystem calls
+        auto ret = std::filesystem::exists(fname);
+#else
+        ifstream file(fname);
+        auto ret = file.good();
+        file.close();
+#endif // GNUC VERSION
+
+        // FIXME: revert to ret from false
+        return false; // ret;
+    };
+
+    // check if file exists
+    bool exists = fileexists(fname);
+
+    // if the file does not exist, create it
+    if (!exists)
+    {
 #ifdef USE_MPI
 
-    // create a MPI data type
-    MPI_Type_contiguous((int_t)(sizeof(info_t) / sizeof(int_t)),
-                        MPI_INT,
-                        &MPI_info);
+        // create a MPI data type
+        MPI_Type_contiguous((int_t)(sizeof(info_t) / sizeof(int_t)),
+                            MPI_INT,
+                            &MPI_info);
 
-    MPI_Type_commit(&MPI_info);
+        MPI_Type_commit(&MPI_info);
 
-    // open the file
-    status_t err = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), (MPI_MODE_CREATE | MPI_MODE_WRONLY), MPI_INFO_NULL, &fh);
+        // make sure all processes have the same file
+        hcp::mpi::barrier();
+
+        // open the file as ofstream file
+        status_t err = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), (MPI_MODE_CREATE | MPI_MODE_WRONLY), MPI_INFO_NULL, &fh);
 
 #else
 
-    fh = new ofstream;
-    fh->open(fname, ios::out | ios::binary);
-    status_t err = SLM_SUCCESS;
+        fh = new ofstream;
+        fh->open(fname, ios::out | ios::binary);
 
-    if (!fh)
-        err = ERR_FILE_NOT_FOUND;
+        // if unable to open fh
+        if (!fh)
+        {
+            std::cerr << "Error opening ofstream file: " << fname << std::endl;
+            exit (-1);
+        }
 
 #endif // USE_MPI
+    }
 
-    return err;
+    return exists;
 }
 
 status_t MSQuery::write_index()
@@ -242,17 +600,21 @@ status_t MSQuery::write_index()
 #ifdef USE_MPI
     return MPI_File_close(&fh);
 #else
-    fh->close();
 
-    delete fh;
-    fh = nullptr;
+    if (fh && fh->is_open())
+    {
+        fh->close();
+
+        delete fh;
+        fh = nullptr;
+    }
 
     return SLM_SUCCESS;
 
 #endif // USE_MPI
 }
 
-status_t MSQuery::read_index(info_t *findex, int_t size)
+status_t MSQuery::read_index(info_t *findex, int_t count)
 {
     // file name
     string fname = params.datapath + "/summary.io";
@@ -264,7 +626,7 @@ status_t MSQuery::read_index(info_t *findex, int_t size)
     status_t status = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh2);
 
     // read the index
-    status = MPI_File_read_all(fh2, findex, size, MPI_info, MPI_STATUS_IGNORE);
+    status = MPI_File_read_all(fh2, findex, count, MPI_info, MPI_STATUS_IGNORE);
 
     // close the file
     MPI_File_close(&fh2);
@@ -276,7 +638,7 @@ status_t MSQuery::read_index(info_t *findex, int_t size)
 
     if (fh2.is_open())
     {
-        fh2.read((char_t *)findex, size * sizeof(info_t));
+        fh2.read((char_t *)findex, count * sizeof(info_t));
         fh2.close();
     }
     else
@@ -287,18 +649,21 @@ status_t MSQuery::read_index(info_t *findex, int_t size)
     return status;
 }
 
-status_t MSQuery::archive(int_t index) 
+status_t MSQuery::archive(int_t index)
 {
 #ifdef USE_MPI
     return MPI_File_write_at(fh, sizeof(info_t)*(index), &info, 1, MPI_info, MPI_STATUS_IGNORE); 
 #else
+
+    // fh advances with every write/read
     fh->write((char_t *)&info, sizeof(info_t));
 
     return SLM_SUCCESS;
-#endif
+#endif // USE_MPI
 }
 
-status_t MSQuery::extractbatch(uint_t count, Queries *expSpecs, int_t &rem)
+template <typename T>
+status_t MSQuery::extractbatch(uint_t count, Queries<T> *expSpecs, int_t &rem)
 {
     status_t status = SLM_SUCCESS;
 
@@ -328,22 +693,22 @@ status_t MSQuery::extractbatch(uint_t count, Queries *expSpecs, int_t &rem)
         /* Get a new ifstream object and open file */
         qfile = new ifstream;
 
-        /* Check allocation
-        if (qfile == NULL)
-        {
-            status = ERR_INVLD_PARAM;
-        }*/
-
-        qfile->open(MS2file.c_str());
+        // FIXME: 
+        (BINMS2)? qfile->open(MS2file, ios::in | ios::binary) : qfile->open(MS2file, ios::in);
     }
 
     /* Check if file opened */
     if (qfile->is_open() /*&& status =SLM_SUCCESS*/)
     {
-        for (uint_t spec = startspec; spec < endspec; spec++)
+        if (BINMS2)
+            readBINbatch<T>(startspec, endspec, expSpecs);
+        else
         {
-            readspectrum();
-            status = pickpeaks(expSpecs);
+            for (uint_t spec = startspec; spec < endspec; spec++)
+            {
+                readMS2spectrum();
+                status = pickpeaks(expSpecs);
+            }
         }
     }
 
@@ -359,7 +724,50 @@ status_t MSQuery::extractbatch(uint_t count, Queries *expSpecs, int_t &rem)
     return status;
 }
 
-VOID MSQuery::readspectrum()
+template <typename T>
+void MSQuery::readBINbatch(int startspec, int endspec, Queries<T> *expSpecs)
+{
+    auto prec_mz = expSpecs->precurse;
+    auto z = expSpecs->charges;
+    auto rtimes = expSpecs->rtimes;
+    auto lens = expSpecs->idx;
+    auto m_mzs = expSpecs->moz;
+    auto m_intns = expSpecs->intensity;
+
+    int ind = 0;
+
+    if (qfile->is_open())
+    {
+        // temporary spectrum length variable
+        int_t clen = 0;
+
+        // lens[0] must be 0
+        lens[0] = 0;
+
+        auto count = (endspec - startspec);
+
+        // FIXME: are loop limits correct?
+        for (int i = 0; i < count; i++)
+        {
+            qfile->read((char *)&prec_mz[i], sizeof(float));
+            qfile->read((char *)&z[i], sizeof(int));
+            qfile->read((char *)&rtimes[i], sizeof(float));
+            qfile->read((char *)&clen, sizeof(int));
+
+            qfile->read((char *)&m_mzs[ind], sizeof(T) * clen);
+            qfile->read((char *)&m_intns[ind], sizeof(T) * clen);
+
+            ind += clen;
+            lens[i+1] = lens[i] + clen;
+            
+        }
+    }
+
+    // set the total number of peaks
+    expSpecs->numPeaks = ind;
+}
+
+VOID MSQuery::readMS2spectrum()
 {
     string_t line;
     uint_t speclen = 0;
@@ -388,9 +796,7 @@ VOID MSQuery::readspectrum()
                 string_t val = "1";
 
                 if (mh != NULL)
-                {
                     val = string_t(mh);
-                }
 
                 spectrum.Z = std::atoi(val.c_str());
 
@@ -398,12 +804,9 @@ VOID MSQuery::readspectrum()
                 mh = strtok_r(NULL, " \t", &saveptr);
 
                 if (mh != NULL)
-                {
                     val = string_t(mh);
-                }
 
                 spectrum.prec_mz = (double_t)std::atof(val.c_str());
-
             }
             else if (line[0] == 'I')
             {
@@ -437,9 +840,7 @@ VOID MSQuery::readspectrum()
                     break;
                 }
                 else
-                {
                     scan = true;
-                }
             }
             /* Values */
             else
@@ -568,17 +969,19 @@ VOID MSQuery::readspectrum()
     }
 }
 
-status_t MSQuery::pickpeaks(Queries *expSpecs)
+template <typename T>
+status_t MSQuery::pickpeaks(Queries<T> *expSpecs)
 {
-    uint_t *dIntArr = spectrum.intn;
-    uint_t *mzArray = spectrum.mz;
+    T *dIntArr = spectrum.intn;
+    T *mzArray = spectrum.mz;
     int_t SpectrumSize = spectrum.SpectrumSize;
 
+    // subtract running_count to get local index of expSpecs
     expSpecs->precurse[currPtr - running_count] = spectrum.prec_mz;
     expSpecs->charges[currPtr - running_count] = MAX(1, spectrum.Z);
     expSpecs->rtimes[currPtr - running_count] = MAX(0.0, spectrum.rtime);
 
-    KeyVal_Parallel<uint_t, uint_t>(dIntArr, mzArray, (uint_t)SpectrumSize, 1);
+    KeyVal_Parallel<T, T>(dIntArr, mzArray, (uint_t)SpectrumSize, 1);
 
     uint_t speclen = 0;
     double_t factor = 0;
@@ -607,24 +1010,27 @@ status_t MSQuery::pickpeaks(Queries *expSpecs)
 
     /* Update the indices */
     uint_t offset = expSpecs->idx[currPtr - running_count];
+
+    // subtract running_count to get local index of expSpecs
     expSpecs->idx[currPtr - running_count + 1] = expSpecs->idx[currPtr - running_count] + speclen;
 
     /* Check the size of spectrum */
     if (speclen >= QALEN)
     {
         /* Copy the last QALEN elements to expSpecs */
-        std::memcpy(&expSpecs->moz[offset], (mzArray + SpectrumSize - QALEN), (QALEN * sizeof(uint_t)));
-        std::memcpy(&expSpecs->intensity[offset], (dIntArr + SpectrumSize - QALEN), (QALEN * sizeof(uint_t)));
+        std::memcpy(&expSpecs->moz[offset], (mzArray + SpectrumSize - QALEN), (QALEN * sizeof(T)));
+        std::memcpy(&expSpecs->intensity[offset], (dIntArr + SpectrumSize - QALEN), (QALEN * sizeof(T)));
     }
     else
     {
         /* Copy the last speclen items to expSpecs */
-        std::memcpy(&expSpecs->moz[offset], (mzArray + SpectrumSize - speclen), (speclen * sizeof(uint_t)));
-        std::memcpy(&expSpecs->intensity[offset], (dIntArr + SpectrumSize - speclen), (speclen * sizeof(uint_t)));
+        std::memcpy(&expSpecs->moz[offset], (mzArray + SpectrumSize - speclen), (speclen * sizeof(T)));
+        std::memcpy(&expSpecs->intensity[offset], (dIntArr + SpectrumSize - speclen), (speclen * sizeof(T)));
     }
 
     expSpecs->numPeaks += speclen;
 
+    // increase the number of spectra read
     currPtr += 1;
 
     return SLM_SUCCESS;
@@ -648,17 +1054,8 @@ status_t MSQuery::DeinitQueryFile()
         qfile = NULL;
     }
 
-    if (spectrum.intn != NULL)
-    {
-        delete[] spectrum.intn;
-        spectrum.intn = NULL;
-    }
-
-    if (spectrum.mz != NULL)
-    {
-        delete[] spectrum.mz;
-        spectrum.mz = NULL;
-    }
+    if (!BINMS2)
+        spectrum.deallocate();
 
     spectrum.SpectrumSize = 0;
     spectrum.prec_mz = 0;
@@ -711,3 +1108,8 @@ uint_t& MSQuery::Curr_chunk() { return curr_chunk; }
 info_t& MSQuery::Info() { return info; }
 
 bool_t MSQuery::isinit() { return m_isinit; }
+
+// -------------------------------------------------------------------------------------------- //
+
+// explicitly instantiate extractbatch with spectype_t to ensure correct instantiation
+template status_t MSQuery::extractbatch<spectype_t>(uint_t, Queries<spectype_t> *, int_t &);

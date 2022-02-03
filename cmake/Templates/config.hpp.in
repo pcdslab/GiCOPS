@@ -97,3 +97,10 @@
 
 // Not an Amino Acid (NAA)
 #define NAA                      -20000
+
+// data type to use for storing and retrivevign preprocessed spectra
+// valid options are: int (default) and float
+using spectype_t = int;
+
+
+#define BINMS2                true

@@ -421,10 +421,11 @@ typedef struct _globalParams
 
 
 /* Experimental MS/MS spectra data */
-typedef struct _queries
+template <typename T>
+struct Queries
 {
-    uint_t        *moz; /* Stores the m/z values of the spectra */
-    uint_t  *intensity; /* Stores the intensity values of the experimental spectra */
+    T        *moz; /* Stores the m/z values of the spectra */
+    T  *intensity; /* Stores the intensity values of the experimental spectra */
     uint_t        *idx; /* Row ptr. Starting index of each row */
     float_t  *precurse; /* Stores the precursor mass of each spectrum. */
     int_t     *charges;
@@ -442,7 +443,7 @@ typedef struct _queries
         batchNum = 0;
     }
 
-    _queries()
+    Queries()
     {
         fileNum  = 0;
         this->idx       = NULL;
@@ -455,14 +456,14 @@ typedef struct _queries
         batchNum        = 0;
     }
 
-    VOID init()
+    VOID init(int chunksize = QCHUNK)
     {
-        this->idx       = new uint_t[QCHUNK + 1];
-        this->precurse  = new float_t[QCHUNK];
-        this->charges   = new int_t[QCHUNK];
-        this->rtimes   = new float_t[QCHUNK];
-        this->moz       = new uint_t[QCHUNK * QALEN];
-        this->intensity = new uint_t[QCHUNK * QALEN];
+        this->idx       = new uint_t[chunksize + 1];
+        this->precurse  = new float_t[chunksize];
+        this->charges   = new int_t[chunksize];
+        this->rtimes   = new float_t[chunksize];
+        this->moz       = new T[chunksize * QALEN];
+        this->intensity = new T[chunksize * QALEN];
         fileNum         = 0;
         numPeaks        = 0;
         numSpecs        = 0;
@@ -514,7 +515,7 @@ typedef struct _queries
         }
     }
 
-    ~_queries()
+    ~Queries()
     {
         numPeaks = 0;
         numSpecs = 0;
@@ -558,7 +559,7 @@ typedef struct _queries
         }
     }
 
-} Queries;
+};
 
 /* Score entry that goes into the heap */
 typedef struct _heapEntry

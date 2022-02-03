@@ -73,3 +73,7 @@
             "|-------------------------------------|\n"                     \
         << std::endl << std::endl;                                          \
 }
+
+#define KBYTES(x)                       ((x) * 1024)
+#define MBYTES(x)                       ((x) * 1024 * 1024)
+#define GBYTES(x)                       ((x) * 1024 * 1024 * 1024)

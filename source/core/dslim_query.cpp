@@ -55,8 +55,8 @@ int_t nBatches               = 0;
 int_t dssize                 = 0;
 
 /* Expt spectra data buffer */
-lwbuff<Queries> *qPtrs     = NULL;
-Queries *workPtr           = NULL;
+lwbuff<Queries<spectype_t>> *qPtrs     = NULL;
+Queries<spectype_t> *workPtr      = NULL;
 
 #ifdef USE_MPI
 lock_t qfoutlock;
@@ -191,7 +191,7 @@ status_t DSLIM_SearchManager(Index *index)
     /* Initialize the lw double buffer queues with
      * capacity, min and max thresholds */
     if (status == SLM_SUCCESS)
-        qPtrs = new lwbuff<Queries>(20, 5, 15); // cap, th1, th2
+        qPtrs = new lwbuff<Queries<spectype_t>>(20, 5, 15); // cap, th1, th2
 
     /* Initialize the ePtrs */
     if (status == SLM_SUCCESS)
@@ -203,7 +203,7 @@ status_t DSLIM_SearchManager(Index *index)
         /* Create new Queries */
         for (int_t wq = 0; wq < qPtrs->len(); wq++)
         {
-            Queries *nPtr = new Queries;
+            Queries<spectype_t> *nPtr = new Queries<spectype_t>;
 
             /* Initialize the query buffer */
             nPtr->init();
@@ -515,7 +515,7 @@ status_t DSLIM_SearchManager(Index *index)
  * OUTPUT:
  * @status: Status of execution
  */
-status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
+status_t DSLIM_QuerySpectrum(Queries<spectype_t> *ss, Index *index, uint_t idxchunk)
 {
     status_t status = SLM_SUCCESS;
     int_t threads = (int_t) params.threads - (int_t) SchedHandle->getNumActivThds();
@@ -575,13 +575,13 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
         for (int_t queries = 0; queries < ss->numSpecs; queries++)
         {
             /* Pointer to each query spectrum */
-            uint_t *QAPtr = ss->moz + ss->idx[queries];
+            auto *QAPtr = ss->moz + ss->idx[queries];
             float_t pmass = ss->precurse[queries];
             auto    pchg  = ss->charges[queries];
             auto    rtime = ss->rtimes[queries];
-            uint_t *iPtr = ss->intensity + ss->idx[queries];
-            uint_t qspeclen = ss->idx[queries + 1] - ss->idx[queries];
-            uint_t thno = omp_get_thread_num();
+            auto    *iPtr = ss->intensity + ss->idx[queries];
+            auto qspeclen = ss->idx[queries + 1] - ss->idx[queries];
+            auto thno = omp_get_thread_num();
 
             BYC *bycPtr     = Score[thno].byc;
             Results *resPtr = &Score[thno].res;
@@ -660,12 +660,14 @@ status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t idxchunk)
 
 #ifdef MATCH_CHARGE
 
-                                    // FIXME: Is this ichg computation correct?
+                                    // FIXME: Is this ichg computation and usage correct?
                                     int_t ichg = (residue / peplen_1) % maxz;
                                     ichg += 1;
 
-                                    isY *= residue && (ichg < (pchg + params.maxz));
-                                    isB *= residue && (ichg < pchg);
+                                    // Check if the matched ion's charge is less than or equal to the precursor charge
+                                    isY *= (ichg <= pchg);
+                                    isB *= (ichg <= pchg);
+
 #endif // MATCH_CHARGE
                                     /* Get the map element */
                                     BYC *elmnt = bycPtr + ppid;
@@ -1013,7 +1015,7 @@ static int_t DSLIM_BinFindMax(pepEntry *entries, float_t pmass2, int_t min, int_
 VOID DSLIM_IO_Threads_Entry()
 {
     status_t status = SLM_SUCCESS;
-    Queries *ioPtr = NULL;
+    Queries<spectype_t> *ioPtr = NULL;
     bool eSignal = false;
     bool preempt = false;
 
@@ -1112,7 +1114,9 @@ VOID DSLIM_IO_Threads_Entry()
         ioPtr->reset();
 
         /* Extract a chunk and return the chunksize */
-        status = Query->extractbatch(QCHUNK, ioPtr, rem_spec);
+        status = Query->extractbatch<int>(QCHUNK, ioPtr, rem_spec);
+        
+        // update remaining Query entries
         ioPtr->batchNum = Query->Curr_chunk();
         ioPtr->fileNum  = Query->getQfileIndex();
         Query->Curr_chunk()++;
@@ -1203,7 +1207,7 @@ static inline status_t DSLIM_Deinit_IO()
 {
     status_t status = SLM_SUCCESS;
 
-    Queries *ptr = NULL;
+    Queries<spectype_t> *ptr = NULL;
 
     while (!qPtrs->isEmptyReadyQ())
     {

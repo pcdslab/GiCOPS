@@ -36,6 +36,8 @@ __pycache__
 # macOS Finder files
 .DS_Store
 
+*.io
+
 # images
 /*.png
 /*.tif
@@ -76,6 +78,7 @@ __pycache__
 # Executables
 *.exe
 *.out
+*.bin
 *.app
 *.map
 *.pyc

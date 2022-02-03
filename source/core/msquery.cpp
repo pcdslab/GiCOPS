@@ -41,11 +41,11 @@ extern gParams params;
 #ifdef USE_MPI
 // MPI datatype for info_t
 MPI_Datatype MPI_info;
-// handle for summary.io file
+// handle for summary.dbprep file
 MPI_File fh;
 
 #else
-// handle for summary.io file
+// handle for summary.dbprep file
 std::ofstream *fh;
 
 #endif // USE_MPI
@@ -537,7 +537,7 @@ bool MSQuery::init_index()
 {
     bool summaryExists = false;
 
-    string_t fname = params.datapath + "/summary.io";
+    string_t fname = params.datapath + "/summary.dbprep";
 
     // function to check if a file exists
     auto fileexists = [](const string_t &fname) -> bool
@@ -617,7 +617,7 @@ status_t MSQuery::write_index()
 status_t MSQuery::read_index(info_t *findex, int_t count)
 {
     // file name
-    string fname = params.datapath + "/summary.io";
+    string fname = params.datapath + "/summary.dbprep";
 
 #ifdef USE_MPI
     MPI_File fh2;

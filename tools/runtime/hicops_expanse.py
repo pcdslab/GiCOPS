@@ -38,6 +38,9 @@ from shutil import copyfile
 from functools import reduce
 from simple_slurm import Slurm
 
+# time right now to be used
+timerightnow = (datetime.datetime.now()).strftime("%Y_%m_%d_%H_%M_%Z")
+
 #
 # ------------------------------ Helper Functions ------------------------------
 #
@@ -182,8 +185,8 @@ def genSampleParams(inpath):
     sample = open(inpath + '/sampleparams.txt', 'w+')
 
     sample.write('\n')
-    sample.write('# HiCOPS on Expanse\n')
-    sample.write('# Copyrights(c) 2021 PCDS Laboratory\n')
+    sample.write('# HiCOPS on SGCI Expanse Gateway\n')
+    sample.write('# Copyrights(c) 2022 PCDS Laboratory\n')
     sample.write('# Muhammad Haseeb, and Fahad Saeed\n')
     sample.write('# School of Computing and Information Sciences\n')
     sample.write('# Florida International University (FIU), Miami, FL\n')
@@ -193,18 +196,9 @@ def genSampleParams(inpath):
     sample.write('# Sample parameters generated for SDSC Expanse machine\n')
     sample.write('# More information: https://portal.xsede.org/sdsc-expanse\n\n')
 
-    sample.write('# Generated on: ' + (datetime.datetime.now()).strftime("%Y-%m-%d %H:%M %Z") + '\n\n')
+    sample.write('# Generated on: ' + timerightnow + '\n\n')
 
     sample.write('# -------------- SLURM parameters --------------\n\n')
-
-    sample.write('# XSEDE username\n')
-    sample.write('username='+ username + '\n\n')
-
-    sample.write('# Get emails for job status? on/off \n')
-    sample.write('mail=off\n\n')
-
-    sample.write('# Events to get emails? Options: BEGIN, END, FAIL or ALL\n')
-    sample.write('mailtype=FAIL\n\n')
 
     sample.write('# Job time: hh:mm:ss (max: 2:00:00)\n')
     sample.write('jobtime=00:45:00\n\n')
@@ -217,25 +211,19 @@ def genSampleParams(inpath):
     sample.write('# Cores per MPI process (choose from: 32, 64)\n')
     sample.write('cpus_per_task=32\n\n')
 
-    # sample.write('# MPI bind processes to: none, hwthread, core, l1cache, l2cache, l3cache, socket, numa, board\n')
-    # sample.write('bindto=socket\n\n')
-
-    # sample.write('# MPI map processes by: slot, hwthread, core, socket, numa, board, node\n')
-    # sample.write('mapby=socket\n\n')
-
     sample.write('# Optimize MPI settings? on/off\n')
     sample.write('optimize=on\n\n')
 
     sample.write('# -------------- Search parameters --------------\n\n')
 
-    sample.write('# ABSOLUTE path to workspace directory\n')
-    sample.write('workspace=/expanse/lustre/scratch/'+ username + '/temp_project/workspaces/hicops_workspace\n\n')
+    #sample.write('# ABSOLUTE path to workspace directory\n')
+    #sample.write('workspace=/expanse/lustre/scratch/'+ username + '/temp_project/workspaces/hicops_workspace\n\n')
 
-    sample.write('# ABSOLUTE path to processed protein database parts\n')
-    sample.write('dbparts=/path/to/processed/database/parts\n\n')
+    #sample.write('# ABSOLUTE path to processed protein database parts\n')
+    #sample.write('dbparts=/path/to/processed/database/parts\n\n')
 
-    sample.write('# ABSOLUTE path to MS/MS dataset\n')
-    sample.write('ms2data=/path/to/ms2/dataset\n\n')
+    #sample.write('# ABSOLUTE path to MS/MS dataset\n')
+    #sample.write('ms2data=/path/to/ms2/dataset\n\n')
 
     sample.write('# Mods to include per peptide sequence\n')
     sample.write('nmods=3\n\n')
@@ -366,7 +354,7 @@ if __name__ == '__main__':
 
     # print header
     print ('\n-----------------------------')
-    print   ('|  HiCOPS for XSEDE Expanse |')
+    print   ('|  HiCOPS for XSEDE Gateway |')
     print   ('|    PCDS Lab, SCIS, FIU    |')
     print   ('-----------------------------\n')
 
@@ -378,7 +366,7 @@ if __name__ == '__main__':
         exit(-1)
 
     # initialize parser
-    parser = argparse.ArgumentParser(description='Automated execution of HiCOPS on a Expanse')
+    parser = argparse.ArgumentParser(description='Automated execution of HiCOPS on SGCI Expanse Gateway')
 
     # input parameters
     parser.add_argument('-i', '--in', dest='params', type=str, required=('-g' not in sys.argv) and ('--gen' not in sys.argv),
@@ -388,8 +376,24 @@ if __name__ == '__main__':
     parser.add_argument('-g', '--gen', dest='gen', action='store_true',
                         help='Generate a sampleparams.txt file and exit.')
 
+    # path to database parts
+    parser.add_argument('-db', '--database', dest='db', required=('-g' not in sys.argv) and ('--gen' not in sys.argv), 
+                        help='Path to database parts')
+
+    parser.add_argument('-dat', '--dataset', dest='dataset', required=('-g' not in sys.argv) and ('--gen' not in sys.argv),
+                        help = 'Path to MS/MS dataset')
+
     # parse arguments
     args = parser.parse_args()
+
+    # variable to check if to generate a sampleparams file
+    generate = args.gen
+
+    # if generate a sampleparam
+    if (generate == True):
+        # gen sampleparams.txt
+        genSampleParams(os.getcwd())
+        sys.exit(0)
 
     # input path to the params file
     if (args.params is not None):
@@ -401,20 +405,29 @@ if __name__ == '__main__':
             print ('ERROR: Directory does not exist\n')
             sys.exit (-1)
 
-    # variable to check if to generate a sampleparams file
-    generate = args.gen
+    # path to database parts
+    if (args.db is not None):
+        db = args.db.lstrip()
+        db = os.path.abspath(db)
 
-    # if generate a sampleparam
-    if (generate == True):
-        # gen sampleparams.txt
-        genSampleParams(os.getcwd())
-        sys.exit(0)
+        if (os.path.exists(db) == False):
+            print ("FATAL: Invalid path to proteome database parts directory")
+            sys.exit(-2)
+    
+    # path to dataset
+    if (args.dataset is not None):
+        dataset = args.dataset.lstrip()
+        dataset = os.path.abspath(dataset)
+
+        if (os.path.exists(dataset) == False):
+            print ("FATAL: Invalid path to MS/MS dataset")
+            sys.exit(-2)
 
 #
 # ------------------------------ Initialization ------------------------------
 #
     # path to hicops binary
-    hicopspath = os.path.dirname(getEnvVar('hicops_PATH')+'/bin') # os.path.dirname(os.path.realpath(__file__)) + '/..'
+    hicopspath = os.path.dirname(getEnvVar('hicops_PATH')+'/bin')
 
     # Initialize the variables
     parameters = {}
@@ -444,8 +457,8 @@ if __name__ == '__main__':
     parameters['optimize'] = True
 
     # search settings
-    parameters['dbparts'] = ''
-    parameters['ms2data'] = ''
+    parameters['dbparts'] = dataset
+    parameters['ms2data'] = db
     parameters['nmods'] = 0
     parameters['madded'] = 0
     parameters['mods'] = []
@@ -477,7 +490,7 @@ if __name__ == '__main__':
     # slurm settings
     parameters['account'] = 'wmu101'
     parameters['username'] = os.environ['USER']
-    parameters['workspace'] = '/expanse/lustre/scratch/' + parameters['username'] + '/temp_project/workspaces/hicops_workspace'
+    parameters['workspace'] = '/expanse/lustre/scratch/' + parameters['username'] + '/temp_project/workspaces/hicops_workspace' + timerightnow
     parameters['mail'] = False
     parameters['evts'] = 'FAIL'
     
@@ -488,7 +501,7 @@ if __name__ == '__main__':
 # ------------------------------ Parse params file -------------------------------------------
 #
 
-    print ("\n\n-------------- Parameter Parsing --------------\n")
+    print ("\n\n-------------- Parameter Parsing -------------- \n")
 
     # Print the parameters provided in the file
     print ('Reading parameters from:', paramfile, '\n')
@@ -508,26 +521,8 @@ if __name__ == '__main__':
             param = param.lstrip().rstrip()
             val = val.rstrip().lstrip()
 
-            # Set XSEDE username 
-            if (param == 'username'):
-                parameters['username'] = val
-
-            # Set up emails
-            elif (param == 'mail'):
-                if (val == 'on' or val == 'true' or val == 'yes' or val == 'ON'):
-                    parameters['mail'] = True
-                print ('Emails =', parameters['mail'])
-
-            # Email events
-            elif (param == 'mailtype'):
-                if not val in ['BEGIN', 'END', 'ALL', 'FAIL']:
-                    parameters['evts'] = 'FAIL'
-
-                if parameters['mail'] == True:
-                    print ('Email events =', parameters['evts'])
-
             # Set the job time
-            elif (param == 'jobtime'):
+            if (param == 'jobtime'):
                 hh,mm,ss = map(int, val.split(':',2))
                 if (hh == 0 and mm == 0 and ss == 0):
                     val = '00:45:00'
@@ -544,18 +539,6 @@ if __name__ == '__main__':
                     parameters['nodes'] = parameters['MAXNODES']
                 print ('Nodes =', parameters['nodes'])
 
-            # Set the MPI binding
-            elif (param == 'bindto'):
-                if (val in ['none', 'hwthread', 'core', 'l1cache', 'l2cache', 'l3cache', 'socket', 'numa', 'board']):
-                    parameters['bindto'] = val
-                print ('MPI binding =', parameters['bindto'])
-
-            # Set the MPI mapping
-            elif (param == 'mapby'):
-                if (val in ['slot', 'hwthread', 'core', 'socket', 'numa', 'board', 'node']):
-                    parameters['mapby'] = val
-                print ('MPI mapping by =', parameters['mapby'])
-
             # Set cores per MPI process
             elif (param == 'cpus_per_task'):
                 parameters['cpus_per_task'] = int(val)
@@ -568,40 +551,6 @@ if __name__ == '__main__':
 
                 parameters['ntasks_per_node'] = parameters['sockets'] * parameters['ntasks_per_socket']
                 parameters['ntasks'] = int(parameters['ntasks_per_node'] * parameters['nodes'])
-
-            # Optimize number of cores and MPI processes to run?
-            elif (param == 'optimize'):
-                if (val == 'off' or val == 'false' or val == 'no' or val == 'OFF'):
-                    parameters['optimize'] = False
-                else:
-                    parameters['optimize'] = True
-                print ('Optimize MPI =', parameters['optimize'])
-
-            # Workspace Path
-            elif (param == 'workspace'):
-                if (val[-1] == '/'):
-                    val = val[:-1]
-
-                parameters['workspace'] = os.path.abspath(val)
-                print ('Workspace =', parameters['workspace'])
-
-            # Set database file 
-            elif (param == 'dbparts'):
-                parameters['dbparts'] = os.path.abspath(val)
-                print ('Database parts =', parameters['dbparts'])
-
-                if (os.path.exists(parameters['dbparts']) == False):
-                    print ("FATAL: Invalid path to proteome database parts directory")
-                    sys.exit(-2)
-
-            # Set the ms2data path
-            elif (param == 'ms2data'):
-                parameters['ms2data'] = os.path.abspath(val)
-                print ('MS/MS dataset =', parameters['ms2data'])
-
-                if (os.path.exists(parameters['ms2data']) == False):
-                    print ("FATAL: Invalid path to MS2 dataset")
-                    sys.exit(-2)
 
             # Set max mods
             elif (param == 'nmods'):
@@ -1011,8 +960,8 @@ if __name__ == '__main__':
 
             # We hope this never happens :)
             if parameters['size_per_task'] > (parameters['mem_per_task'] * 0.7):
-                print ('WARNING: index size > available memory = ' + str(parameters['size_per_task']) + 'MB > ' + str(parameters['mem_per_task'] * 0.7) + 'MB \n')
-                print ('TIP: Increase number of nodes or reduce the index size to avoid segfaults and performance degradations')
+                print ('WARNING: index size > available memory ==> ' + str(parameters['size_per_task']) + 'MB > ' + str(parameters['mem_per_task'] * 0.7) + 'MB \n')
+                print ('TIP: Increase the no. of nodes or reduce the index size to avoid SEGFAULTS and/or performance degradations')
 
         # if very small index then the preprocessing threads may be increased to 50%
         elif (parameters['size_per_task']  < 10E6 or parameters['dM'] < 50):

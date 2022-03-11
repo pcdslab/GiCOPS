@@ -216,8 +216,8 @@ def genSampleParams(inpath):
 
     sample.write('# -------------- Search parameters --------------\n\n')
 
-    #sample.write('# ABSOLUTE path to workspace directory\n')
-    #sample.write('workspace=/expanse/lustre/scratch/'+ username + '/temp_project/workspaces/hicops_workspace\n\n')
+    sample.write('# PATH to workspace identifier\n')
+    sample.write(timerightnow + '\n\n')
 
     #sample.write('# ABSOLUTE path to processed protein database parts\n')
     #sample.write('dbparts=/path/to/processed/database/parts\n\n')
@@ -493,7 +493,7 @@ if __name__ == '__main__':
     parameters['workspace'] = '/expanse/lustre/scratch/' + parameters['username'] + '/temp_project/workspaces/hicops_workspace' + timerightnow
     parameters['mail'] = False
     parameters['evts'] = 'FAIL'
-    
+
     # test if new params
     newparams = False
 
@@ -568,6 +568,15 @@ if __name__ == '__main__':
                     parameters['mods'].append(val)
                     print ('Adding mod   =', str(val))
                     parameters['madded'] += 1
+
+            # Workspace Path
+            elif (param == 'workspace'):
+                if (val[-1] == '/'):
+                    val = val[:-1]
+
+                parameters['workspace'] = '/expanse/lustre/scratch/' + parameters['username'] + '/temp_project/workspaces/hicops_workspace' + val
+                print ('Workspace ID =', val)
+
 
             # Set the min digestion length
             elif (param == 'min_length'):
@@ -726,7 +735,7 @@ if __name__ == '__main__':
     #
 
     # Create a workspace directory
-    print ('\nInit workspace at: ', parameters['workspace'])
+    # print ('\nInit workspace at: ', parameters['workspace'])
 
     os.makedirs(parameters['workspace'], exist_ok=True)
 
@@ -1053,7 +1062,7 @@ if __name__ == '__main__':
     print ('squeue -j ' + str(hicops_id) + ',' + str(post_id), ' \n')
     print ('\nOR\n')
     print ('sacct -j ' + str(hicops_id) + ',' + str(post_id), ' \n')
-    print ('The output will be written at: '+ parameters['workspace'] + '/output')
+    # print ('The output will be written at: '+ parameters['workspace'] + '/output')
 
     print ('\nSUCCESS\n')
 

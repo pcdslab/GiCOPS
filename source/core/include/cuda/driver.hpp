@@ -146,11 +146,11 @@ public:
     }
 
     // ------------------------------------------------------------------------------------ //
-    
-    // FIXME: Only ONE instance per MPI process
+
+    // FIXME: Is this correct? Only ONE instance / MPI process
     static driver* get_instance()
     {
-        static thread_local driver instance;
+        static driver instance;
         return &instance;
     }
 };
@@ -159,7 +159,7 @@ public:
 
 // CUDA driver functions
 template <typename T>
-auto H2D(T *&dst, T *& src, const size_t size, driver* drv)
+auto H2D(T *&dst, T *&src, const size_t size, driver* drv)
 {
     return cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyHostToDevice, drv->stream);
 }
@@ -167,7 +167,7 @@ auto H2D(T *&dst, T *& src, const size_t size, driver* drv)
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto H2D_withEvent(T *&dst,  T *& src, const size_t size, driver* drv)
+auto H2D_withEvent(T *&dst,  T *&src, const size_t size, driver* drv)
 {
     cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyHostToDevice, drv->stream);
     return cudaEventRecord(drv->h2d, drv->stream);
@@ -176,7 +176,7 @@ auto H2D_withEvent(T *&dst,  T *& src, const size_t size, driver* drv)
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto D2H(T *&dst, T *& src, const size_t size, driver* drv)
+auto D2H(T *&dst, T *&src, const size_t size, driver* drv)
 {
     return cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyDeviceToHost, drv->stream);
 }
@@ -184,7 +184,7 @@ auto D2H(T *&dst, T *& src, const size_t size, driver* drv)
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto D2H_withEvent(T *&dst, T *& src, const size_t size, driver* drv)
+auto D2H_withEvent(T *&dst, T *&src, const size_t size, driver* drv)
 {
     cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyDeviceToHost, drv->stream);
     return cudaEventRecord(drv->d2h, drv->stream);
@@ -193,7 +193,7 @@ auto D2H_withEvent(T *&dst, T *& src, const size_t size, driver* drv)
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto D2D(T *&dst, T *& src, const size_t size, driver* drv)
+auto D2D(T *&dst, T *&src, const size_t size, driver* drv)
 {
     return cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyDeviceToDevice, drv->stream);
 }
@@ -220,6 +220,7 @@ template <typename T>
 auto host_pinned_free(T *&ptr)
 {
     return cudaFreeHost(ptr);
+    ptr = nullptr;
 }
 
 // ------------------------------------------------------------------------------------ //
@@ -228,6 +229,7 @@ template <typename T>
 auto device_free(T *&ptr)
 {
     return cudaFree(ptr);
+    ptr = nullptr;
 }
 
 

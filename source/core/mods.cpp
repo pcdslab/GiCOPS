@@ -166,7 +166,7 @@ static VOID MODS_GenCombinations()
  * OUTPUT:
  * @Comb: nCk
  */
-ull_t combine(int n, int k)
+inline ull_t combine(int n, int k)
 {
     return Comb[n][k];
 }

@@ -104,3 +104,6 @@ using spectype_t = int;
 
 
 #define BINMS2                true
+
+#define ALPHABETS      26
+#define MAXZ           6

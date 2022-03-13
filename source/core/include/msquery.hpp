@@ -23,6 +23,21 @@
 #include "common.hpp"
 #include "utils.h"
 
+
+// Check for integer type at compile time
+template<typename T>
+struct TypeIsInt
+{
+    static const bool value = false;
+};
+
+template<>
+struct TypeIsInt<int>
+{
+    static const bool value = true;
+};
+
+
 /* Spectrum */
 template <typename T>
 struct _Spectrum
@@ -83,6 +98,9 @@ struct _info
     _info() = default;
     ~_info() = default;
 
+    _info(uint_t _maxslen, uint_t _nqchunks, uint_t _QAcount) : maxslen(_maxslen), nqchunks(_nqchunks), QAcount(_QAcount)
+    {}
+
     /* Overload the = operator */
     _info &operator=(const _info &rhs)
     {
@@ -92,6 +110,7 @@ struct _info
 
         return *this;
     }
+
 };
 
 using info_t = _info;
@@ -99,7 +118,7 @@ using spectrum_t = _Spectrum<spectype_t>;
 
 class MSQuery
 {
-private:
+protected:
     /* Global Variables */
     uint_t currPtr;
     uint_t running_count;
@@ -111,11 +130,8 @@ private:
     spectrum_t spectrum;
     bool_t m_isinit;
 
-    std::array<int, 2> convertAndprepMS2bin(string_t *filename);
-    std::array<int, 2> readMS2file(string_t *filename);
-
-    template <typename T>
-    void flushBinaryFile(string_t *filename, T *m_mzs, T *m_intns, float *rtimes, float *prec_mz, int *z, int *lens, int count, bool close = false);
+    static std::array<int, 2> convertAndprepMS2bin(string_t *filename);
+    static std::array<int, 2> readMS2file(string_t *filename);
 
     void readMS2spectrum();
     
@@ -126,7 +142,7 @@ private:
     status_t pickpeaks(Queries<T> *);
     
     template <typename T>
-    status_t pickpeaks(std::vector<T> &, std::vector<T> &, int &, int, T *, T *);
+    static status_t pickpeaks(std::vector<T> &, std::vector<T> &, int &, int, T *, T *);
 
 public:
 
@@ -143,6 +159,7 @@ public:
     template <typename T>
     status_t extractbatch(uint_t, Queries<T> *, int_t &);
 
+    void setFilename(string_t &);
     status_t DeinitQueryFile();
     BOOL isDeInit();
     uint_t getQfileIndex();
@@ -154,5 +171,7 @@ public:
     info_t& Info();
 
     bool_t isinit();
+
+    static void flushBinaryFile(string_t *filename, spectype_t *m_mzs, spectype_t *m_intns, float *rtimes, float *prec_mz, int *z, int *lens, int count, bool close = false);
 
 };

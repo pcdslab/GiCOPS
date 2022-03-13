@@ -17,24 +17,12 @@
  *
  */
 #include "msquery.hpp"
+#include "cuda/superstep2/kernel.hpp"
 
 using namespace std;
 
-#define BIN_BATCHSIZE        50000
-#define TEMPVECTOR_SIZE      KBYTES(20)
-
-// Check for integer type at compile time
-template<typename T>
-struct TypeIsInt
-{
-    static const bool value = false;
-};
-
-template<>
-struct TypeIsInt<int>
-{
-    static const bool value = true;
-};
+#define BIN_BATCHSIZE               50000
+#define TEMPVECTOR_SIZE             KBYTES(20)
 
 extern gParams params;
 
@@ -165,8 +153,8 @@ std::array<int, 2> MSQuery::convertAndprepMS2bin(string *filename)
     mzs.reserve(TEMPVECTOR_SIZE);
     intns.reserve(TEMPVECTOR_SIZE);
 
-    spectype_t *m_mzs = new spectype_t[BIN_BATCHSIZE * 2 * QALEN];
-    spectype_t *m_intns = m_mzs + (BIN_BATCHSIZE * QALEN);
+    spectype_t *m_mzs = new int[BIN_BATCHSIZE * QALEN];
+    spectype_t *m_intns = new spectype_t[BIN_BATCHSIZE * QALEN];
 
     int    m_idx = 0;
 
@@ -200,10 +188,15 @@ std::array<int, 2> MSQuery::convertAndprepMS2bin(string *filename)
             {
                 if (!isFirst)
                 {
+                    // largest spectrum size
                     largestspec = max(specsize, largestspec);
 
                     // specsize will update here
-                    pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
+#if 1 // GPU && CUDA
+                    hcp::gpu::cuda::s2::pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
+#else
+                    MSQuery::pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
+#endif // GPU && CUDA
 
                     // write the updated specsize
                     lens[count] = specsize;
@@ -216,7 +209,7 @@ std::array<int, 2> MSQuery::convertAndprepMS2bin(string *filename)
                     if (count == BIN_BATCHSIZE)
                     {
                         // flush to the binary file
-                        flushBinaryFile(filename, m_mzs, m_intns, rtimes, prec_mz, z, lens, count);
+                        MSQuery::flushBinaryFile(filename, m_mzs, m_intns, rtimes, prec_mz, z, lens, count);
 
                         count = 0;
                         m_idx = 0;
@@ -309,18 +302,27 @@ std::array<int, 2> MSQuery::convertAndprepMS2bin(string *filename)
             }
         }
 
+        //
+        // process the last spectrum in the file here
+        //
         largestspec = max(specsize, largestspec);
+
+        // specsize will update here
+#if 0 // GPU && CUDA
+        hcp::gpu::cuda::s2::pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
+#else
+        MSQuery::pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
+#endif // GPU && CUDA
+
+        // update lens and counts
         lens[count] = specsize;
-
         m_idx += specsize;
-
-        pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
 
         count++;
         globalcount++;
 
-        // flush to the binary file
-        flushBinaryFile(filename, m_mzs, m_intns, rtimes, prec_mz, z, lens, count, true);
+        // flush the last batch to the file
+        MSQuery::flushBinaryFile(filename, m_mzs, m_intns, rtimes, prec_mz, z, lens, count, true);
 
         /* Close the file */
         qqfile->close();
@@ -361,7 +363,8 @@ status_t MSQuery::pickpeaks(std::vector<T> &mzs, std::vector<T> &intns, int &spe
         auto l_min_int = params.min_int; //0.01 * dIntArr[SpectrumSize - 1];
 
         // TODO: choose either one and discard the other code for intensity normalization
-#if 1
+
+#if 1 // NON-STD code
 
         /* Set the highest peak to base intensity */
         intns[SpectrumSize - 1] = params.base_int;
@@ -373,13 +376,14 @@ status_t MSQuery::pickpeaks(std::vector<T> &mzs, std::vector<T> &intns, int &spe
             intns[j] *= factor;
 
             if (intns[j] >= l_min_int)
-            {
                 newspeclen++;
-            }
+            // since sorted in ascending order. TODO: Check if this is correct
+            else 
+                break;
         }
 #else
         // STL-based code for intensity normalization
-            
+
         // beginning position of noramlization region
         auto bpos = intns.begin();
 
@@ -393,7 +397,7 @@ status_t MSQuery::pickpeaks(std::vector<T> &mzs, std::vector<T> &intns, int &spe
         auto p_beg = std::lower_bound(bpos, intns.end(), l_min_int);
         int newspeclen = std::distance(p_beg, intns.end());
 
-#endif // 1
+#endif // STL code
 
         /* Check the size of spectrum */
         if (newspeclen >= QALEN)
@@ -427,8 +431,7 @@ status_t MSQuery::pickpeaks(std::vector<T> &mzs, std::vector<T> &intns, int &spe
     return SLM_SUCCESS;
 }
 
-template <typename T>
-void MSQuery::flushBinaryFile(string *filename, T *m_mzs, T *m_intns, float *rtimes, float *prec_mz, int *z, int *lens, int count, bool close)
+void MSQuery::flushBinaryFile(string *filename, spectype_t *m_mzs, spectype_t *m_intns, float *rtimes, float *prec_mz, int *z, int *lens, int count, bool close)
 {
     static std::ofstream qbFile(*filename + ".bin", ios::binary);
 
@@ -443,8 +446,8 @@ void MSQuery::flushBinaryFile(string *filename, T *m_mzs, T *m_intns, float *rti
             qbFile.write((char *)&rtimes[i], sizeof(float));
             qbFile.write((char *)&lens[i], sizeof(int));
 
-            qbFile.write((char *)&m_mzs[ind], sizeof(T) * lens[i]);
-            qbFile.write((char *)&m_intns[ind], sizeof(T) * lens[i]);
+            qbFile.write((char *)&m_mzs[ind], sizeof(spectype_t) * lens[i]);
+            qbFile.write((char *)&m_intns[ind], sizeof(spectype_t) * lens[i]);
 
             ind += lens[i];
         }
@@ -499,7 +502,7 @@ status_t MSQuery::initialize(string_t *filename, int_t fno)
             // allocate memory for the largest spectrum in file
             spectrum.allocate(info.maxslen + 1);
         else
-        // binary file
+            // binary file
             MS2file += ".bin";
 
         m_isinit = true;
@@ -508,6 +511,8 @@ status_t MSQuery::initialize(string_t *filename, int_t fno)
     /* Return the status */
     return status;
 }
+
+void MSQuery::setFilename(string_t &filename) { this->MS2file = filename; }
 
 //
 // info initialized at remote process, initialize rest here
@@ -523,9 +528,11 @@ void MSQuery::vinitialize(string_t *filename, int_t fno)
     MS2file = *filename;
     qfileIndex = fno;
 
-    // init to the largest spectrum in file
-    spectrum.intn = new spectype_t[info.maxslen + 1];
-    spectrum.mz = new spectype_t[info.maxslen + 1];
+    if (!BINMS2)
+        // allocate memory for the largest spectrum in file
+        spectrum.allocate(info.maxslen + 1);
+    else
+        MS2file += ".bin";
 
     m_isinit = true;
 }
@@ -1113,3 +1120,5 @@ bool_t MSQuery::isinit() { return m_isinit; }
 
 // explicitly instantiate extractbatch with spectype_t to ensure correct instantiation
 template status_t MSQuery::extractbatch<spectype_t>(uint_t, Queries<spectype_t> *, int_t &);
+
+template status_t MSQuery::pickpeaks<spectype_t>(std::vector<spectype_t> &mzs, std::vector<spectype_t> &intns, int &specsize, int m_idx, spectype_t *m_intns, spectype_t *m_mzs);

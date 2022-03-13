@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "config.hpp"
 #include "slm_dsts.h"
 #include "slmerr.h"
 

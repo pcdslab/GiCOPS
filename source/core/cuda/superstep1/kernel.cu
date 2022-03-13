@@ -35,9 +35,6 @@
 #include "cuda/driver.hpp"
 #include "cuda/superstep1/kernel.hpp"
 
-#define ALPHABETS      26
-#define MAXZ           6
-
 // Macro to obtain amino acid masses
 #define PROTONS(z)                 ((PROTON) * (z))
 #define AAMASS(x)                  ((aaMass[AAidx(x)]) + (statMass[AAidx(x)]))
@@ -118,7 +115,7 @@ __host__ void exclusiveScan(uint_t *array, int size, int init)
     thrust::device_vector<uint_t> d_array(array, array + size);
 
     // compute exclusive scan
-    thrust::exclusive_scan(thrust::device, d_array.begin(), d_array.end(), d_array.begin(), init);
+    thrust::exclusive_scan(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_array.begin(), d_array.end(), d_array.begin(), init);
 
     // copy back to host
     thrust::copy(d_array.begin(), d_array.end(), array);
@@ -158,10 +155,10 @@ void SortpepEntries(Index *index, float_t *h_mz)
 
     // initilize values to sequence
     thrust::device_vector<int> d_indices(size);
-    thrust::sequence(d_indices.begin(), d_indices.end());
+    thrust::sequence(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_indices.begin(), d_indices.end());
 
     // sort the values using MZs as keys
-    thrust::sort_by_key(d_pepMZs.begin(), d_pepMZs.end(), d_indices.begin());
+    thrust::sort_by_key(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_pepMZs.begin(), d_pepMZs.end(), d_indices.begin());
 
     // vector to store sorted indices
     std::vector<int> h_sorted_indices(size);
@@ -202,10 +199,10 @@ __host__ void StableKeyValueSort(uint_t *d_keys, uint_t* h_data, int size)
     thrust::device_vector<uint_t> d_data(size);
 
     // enumerate indices
-    thrust::sequence(d_data.begin(), d_data.end());
+    thrust::sequence(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_data.begin(), d_data.end());
 
     // sort the data using keys
-    thrust::stable_sort_by_key(d_keys, d_keys + size, d_data.begin());
+    thrust::stable_sort_by_key(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_keys, d_keys + size, d_data.begin());
 
     // copy sorted data to host array
     thrust::copy(d_data.begin(), d_data.end(), h_data);
@@ -345,10 +342,10 @@ __host__ void ConstructbA(Index *index, size_t iAsize, uint chunk_number)
     thrust::device_vector<uint_t> d_bA(bAsize);
 
     // enumerate indices
-    thrust::sequence(d_bA.begin(), d_bA.end());
+    thrust::sequence(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_bA.begin(), d_bA.end());
 
     // binary search the start of each ion and store in d_bA
-    thrust::lower_bound(thrust::device, d_sortedFragIon, d_sortedFragIon + iAsize, d_bA.begin(), d_bA.end(), d_bA.begin());
+    thrust::lower_bound(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_sortedFragIon, d_sortedFragIon + iAsize, d_bA.begin(), d_bA.end(), d_bA.begin());
 
     // copy bA data back to CPU
     thrust::copy(d_bA.begin(), d_bA.end(), index->ionIndex[chunk_number].bA);
@@ -442,7 +439,7 @@ __global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, cha
         myVal += AAMASS(_seq[myAA]);
 
         if (_entry->sites.modNum != 0)
-            if (_entry->sites.sites >> myAA)
+            if ((_entry->sites.sites >> myAA) & 0x01)
                 myVal += MODMASS(_seq[myAA]);
 
         // copy to shared memory

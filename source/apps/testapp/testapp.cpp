@@ -26,6 +26,13 @@ status_t main(int_t argc, char_t* argv[])
 {
     status_t status = SLM_SUCCESS;
 
+    std::cout << "--------------------------------------------------------------------" << std::endl;
+    std::cout << "This is a test app for CUDA functions, blocks and kernels." << std::endl;
+    std::cout << "All code is disabled and is only for debugging/testing purposes." << std::endl;
+    std::cout << "Feel free to modify and experiment with it. Enjoy!" << std::endl;
+    std::cout << "--------------------------------------------------------------------" << std::endl;
+
+#if 0
     int n = 1e8;
     float *h_a, *h_b, *h_c;
     float *d_a, *d_b, *d_c;
@@ -83,6 +90,8 @@ status_t main(int_t argc, char_t* argv[])
     cuda::error_check(cuda::host_pinned_free(h_a));
     cuda::error_check(cuda::host_pinned_free(h_b));
     cuda::error_check(cuda::host_pinned_free(h_c));
+
+#endif // 0
 
     return status;
 }

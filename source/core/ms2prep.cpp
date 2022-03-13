@@ -18,7 +18,7 @@
  */
 
 #include "ms2prep.hpp"
-
+#include "cuda/superstep2/kernel.hpp"
 //
 // TODO: insert instrumentation for the work performed in this file
 // Specially measure the compute to overhead (comm and I/O) ratio.
@@ -110,12 +110,10 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
     status_t status = SLM_SUCCESS;
     int_t nfiles = queryfiles.size();
 
-    int_t cputhreads = 1; // params.threads; FIXME
+    int_t cputhreads = params.threads;
 
 #if 1 // defined (GPU) && defined (CUDA)
-
-    int_t gputhreads = 0; // 1 FIXME
-    cputhreads -= gputhreads;
+    cputhreads -= 1;
 
 #endif // GPU && CUDA
 
@@ -162,6 +160,11 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
             for (auto loc_fid : ms2local)
                 ms2QueueIdx.push(loc_fid);
 
+            // ------------------------------------------------------------ //
+
+            //
+            // lambda function to initialize the MSQuery instances
+            // 
             auto workerthread = [&](bool gpu)
             {
                 auto loc_fid = 0;
@@ -189,11 +192,8 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
 
                     // check if working with GPU
                     if (gpu)
-                    {
                         // TODO: GPU kernel is needed here.
-                        // hcp::gpu::cuda::s2::initialize(ptrs[loc_fid], &queryfiles[loc_fid], loc_fid);
-                        ptrs[loc_fid]->initialize(&queryfiles[loc_fid], loc_fid);
-                    }
+                        hcp::gpu::cuda::s2::preprocess(ptrs[loc_fid], queryfiles[loc_fid], loc_fid);
                     else
                         ptrs[loc_fid]->initialize(&queryfiles[loc_fid], loc_fid);
                 
@@ -204,24 +204,35 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
                 }
             };
 
-            workerthread(false);
-#if 0
-            // launch threads on GPU and CPU
-            std::vector<std::thread> wThreads(cputhreads + gputhreads);
+            // ------------------------------------------------------------ //
 
-            for (int gth = 0 ; gth < gputhreads; gth++)
-                wThreads.emplace_back(std::thread(workerthread, true));
+            // launch the GPU thread
+            auto gputhread = std::thread(workerthread, true);
+
+            // launch CPU threads
+            std::vector<std::thread> wThreads(cputhreads);
 
             for (int cth = 0 ; cth < cputhreads; cth++)
-                wThreads.emplace_back(std::thread(workerthread, false));
+                wThreads.push_back(std::move(std::thread(workerthread, false)));
+
+            gputhread.join();
 
             // make sure all GPU threads are done
             for (auto& wth : wThreads)
-                wth.join();
+            {
+                if (wth.joinable())
+                {
+                    try{
+                        wth.join();
+                    } 
+                    catch (const std::system_error& e) {
+                        std::cerr << "Thread Joining Error: " << e.what() << std::endl;
+                    }
+                }
+            }
 
+            // clear the vector
             wThreads.clear();
-#endif 
-
 
 #else
 
@@ -233,12 +244,13 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
                 auto loc_fid = ms2local[fid];
                 ptrs[loc_fid]->initialize(&queryfiles[loc_fid], loc_fid);
 #ifdef USE_MPI
-                ptrs[loc_fid]->archive(loc_fid);
+                if (params.nodes > 1)
+                    ptrs[loc_fid]->archive(loc_fid);
 #endif // USE_MPI
             }
 
 #endif // GPU && CUDA
-    
+
             // in case of one node, we need to write in order
             if (params.nodes == 1)
             {
@@ -256,6 +268,8 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
         // synchronize
         if (params.nodes > 1)
             status = hcp::ms2::synchronize();
+
+        // ------------------------------------------------------------ //
 
         //
         // Synchronize global data summary

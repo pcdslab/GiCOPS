@@ -87,8 +87,11 @@ void preprocess(MSQuery *query, string_t &filename, int fileindex)
         // compute number of chunks
         int nchunks = (nqueries / QCHUNK) + (nqueries % QCHUNK > 0);
 
+        // new filename with .bin extension
+        string_t filename_bin(std::move(filename + ".bin"));
+
         // set the filename
-        query->setFilename(filename + ".bin");
+        query->setFilename(filename_bin);
 
         // initialize the MSQuery::info_t
         query->Info() = info_t(maxlen, nchunks, nqueries);
@@ -102,6 +105,7 @@ void preprocess(MSQuery *query, string_t &filename, int fileindex)
 }
 
 // -------------------------------------------------------------------------------------------- //
+
 
 //
 // GPU kernel for picking peaks
@@ -132,7 +136,7 @@ __global__ void pickpeaks(spectype_t *d_intns, spectype_t * d_mzs, spectype_t *d
 //
 // kernel to preprocess the data, reduce and compute new spectrum lengths
 //
-__global__ void computenewlens(spectype_t *d_intns, int *d_lens, int *d_m_lens)
+__global__ void computenewlens(spectype_t *d_intns, int *d_lens, int *d_m_lens, int base_int, int min_int)
 {
     int tid = threadIdx.x;
     int bid = blockIdx.x;
@@ -150,10 +154,10 @@ __global__ void computenewlens(spectype_t *d_intns, int *d_lens, int *d_m_lens)
 
     spectype_t *loc_intns = d_intns + endidx - maxelements;
 
-    double factor = ((double_t) 100000) / loc_intns[maxelements - 1];
+    double factor = ((double_t) base_int) / loc_intns[maxelements - 1];
 
     // filter out intensities > params.min_int (or 1% of base peak)
-    auto l_min_int = 1000;
+    auto l_min_int = min_int;
 
     int myVal = 0;
 
@@ -368,7 +372,7 @@ status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int 
     //
 
     // pickpeaks in the output array
-    hcp::gpu::cuda::s2::computenewlens<<<count, QALEN, shmem, driver->get_stream()>>>(d_intns, d_lens, d_m_lens);
+    hcp::gpu::cuda::s2::computenewlens<<<count, QALEN, shmem, driver->get_stream()>>>(d_intns, d_lens, d_m_lens, params.base_int, params.min_int);
 
     // synchronize data transfers before calling the kernels
     driver->stream_sync();

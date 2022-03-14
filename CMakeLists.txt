@@ -60,9 +60,11 @@ endif()
 #       CXX standard
 ##########################################################################################
 set(CXX_STANDARD_REQUIRED ON)
+
+# required minimum CXX standard to use with argparse library. Else CXX_STANDARD=14 is fine.
 set(HiCOPS_CXX_STANDARD 17)
 
-if(CMAKE_CXX_STANDARD LESS ${HiCOPS_CXX_STANDARD})
+if(NOT CMAKE_CXX_STANDARD OR (CMAKE_CXX_STANDARD LESS ${HiCOPS_CXX_STANDARD}))
     set(CMAKE_CXX_STANDARD ${HiCOPS_CXX_STANDARD})
     message(STATUS "Setting CXX_STANDARD to ${HiCOPS_CXX_STANDARD}")
 endif()

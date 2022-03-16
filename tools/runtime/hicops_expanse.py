@@ -39,7 +39,7 @@ from functools import reduce
 from simple_slurm import Slurm
 
 # time right now to be used
-timerightnow = (datetime.datetime.now()).strftime("%Y_%m_%d_%H_%M_%Z")
+timerightnow = (datetime.datetime.now()).strftime("%Y_%m_%d_%H_%M_%S")
 
 #
 # ------------------------------ Helper Functions ------------------------------
@@ -91,89 +91,6 @@ def checkJobStatus(job_id):
                 return False
 
     return True
-#
-# ------------------------------------------------------------------------------
-#
-# Generates a normal unicore job script
-def genSimpleScript(workspace, jobname, account, output, partition, nodes, ntasks_per_node, time, mailto, username, events, command, args=''):
-    script = open(workspace + '/autogen/' + jobname, 'w+')
-    script.write('#!/bin/bash\n')
-    script.write('\n')
-    script.write('#SBATCH --account=' + account +'\n')
-    script.write('#SBATCH --job-name=' + jobname +'\n')
-    script.write('#SBATCH --output=' + output + '\n')
-    script.write('#SBATCH --partition=' + partition + '\n')
-    script.write('#SBATCH --nodes=' + nodes + '\n')
-    script.write('#SBATCH --ntasks-per-node=' + ntasks_per_node + '\n')
-    script.write('#SBATCH --export=ALL\n')
-    script.write('#SBATCH -t ' + time + '\n')
-
-    if (mailto):
-        script.write('#SBATCH --mail-type=' + events + '\n')
-        script.write('#SBATCH --mail-type=' + username + '\n')
-
-    script.write('\n')
-    script.write(command + ' ' + args)
-    script.write('\n')
-
-    return
-
-#
-# ------------------------------------------------------------------------------
-#
-# Generates a multithreaded OpenMP job script
-def genOpenMPScript(workspace, jobname, account, outname, partition, nodes, ntasks_per_node, time, cpus_per_task, mailto, username, events, command, args):
-    script = open(workspace + '/autogen/' + jobname, 'w+')
-    script.write('#!/bin/bash\n')
-    script.write('\n')
-    script.write('#SBATCH --account=' + account + '\n')
-    script.write('#SBATCH --job-name="' + jobname +'"\n')
-    script.write('#SBATCH --output=' + workspace + '/autogen/' + outname + '.out\n')
-    script.write('#SBATCH --partition=' + partition + '\n')
-    script.write('#SBATCH --nodes=' + nodes + '\n')
-    script.write('#SBATCH --ntasks-per-node='+ ntasks_per_node +'\n')
-    script.write('#SBATCH --cpus-per-task=' + cpus_per_task + '\n')
-    script.write('#SBATCH --export=ALL\n')
-    script.write('#SBATCH -t ' + time + '\n')
-    if (mailto):
-        script.write('#SBATCH --mail-type=' + events + '\n')
-        script.write('#SBATCH --mail-type=' + username + '\n')
-
-    script.write('\n')
-    script.write ('export OMP_NUM_THREADS      ' + cpus_per_task + '\n')
-    script.write('\n')
-    script.write(command + ' ' + args)
-    script.write('\n')
-
-    return
-
-#
-# ------------------------------------------------------------------------------
-#
-# Generates a Hybrid MPI/OpenMP job script
-def genMPI_OpenMPScript(workspace, jobname, account, output, partition, nodes, ntasks_per_socket, time, cpus_per_task, ntasks, bindto, mapby, mailto, username, events, command, args):
-    script = open(workspace + '/autogen/' + jobname, 'w+')
-    script.write('#!/bin/bash\n')
-    script.write('\n')
-    script.write('#SBATCH --account=' + account + '\n')
-    script.write('#SBATCH --job-name=' + jobname +'\n')
-    script.write('#SBATCH --output=' + output + '\n')
-    script.write('#SBATCH --partition=' + partition + '\n')
-    script.write('#SBATCH --nodes=' + nodes + '\n')
-    script.write('#SBATCH --ntasks-per-socket=' + ntasks_per_socket + '\n')
-    script.write('#SBATCH --cpus-per-task=' + cpus_per_task + '\n')
-    script.write('#SBATCH --export=ALL\n')
-    script.write('#SBATCH -t ' + time + '\n')
-    if (mailto):
-        script.write('#SBATCH --mail-type=' + events + '\n')
-        script.write('#SBATCH --mail-type=' + username + '\n')
-    script.write('\n')
-    script.write ('export OMP_NUM_THREADS      ' + cpus_per_task + '\n')
-    script.write('\n')
-    script.write('srun --mpi=pmi2 ' + ' -np ' + ntasks + ' --bind-to ' + bindto + ' --map-by ' + mapby + ' ' + command + ' ' + args)
-    script.write('\n')
-
-    return
 
 #
 # ------------------------------------------------------------------------------
@@ -217,13 +134,7 @@ def genSampleParams(inpath):
     sample.write('# -------------- Search parameters --------------\n\n')
 
     sample.write('# PATH to workspace identifier\n')
-    sample.write(timerightnow + '\n\n')
-
-    #sample.write('# ABSOLUTE path to processed protein database parts\n')
-    #sample.write('dbparts=/path/to/processed/database/parts\n\n')
-
-    #sample.write('# ABSOLUTE path to MS/MS dataset\n')
-    #sample.write('ms2data=/path/to/ms2/dataset\n\n')
+    sample.write('workspace=' + timerightnow + '\n\n')
 
     sample.write('# Mods to include per peptide sequence\n')
     sample.write('nmods=3\n\n')
@@ -267,7 +178,7 @@ def genSampleParams(inpath):
     sample.write('min_hits=4\n\n')
 
     sample.write('# Base normalized Intensity for MS/MS data \n')
-    sample.write('base_int=100000\n\n')
+    sample.write('base_int=1000\n\n')
 
     sample.write('# Cutoff ratio w.r.t. base intensity \n')
     sample.write('cutoff_ratio=0.01\n\n')
@@ -280,9 +191,6 @@ def genSampleParams(inpath):
 
     sample.write('# Fragment Mass Tolerance (+-Da)\n')
     sample.write('dF=0.02\n\n')
-
-    # sample.write('# Top Matches to report\n')
-    # sample.write('top_matches=10\n\n')
 
     sample.write('# Max expect value to report\n')
     sample.write('expect_max=20.0\n')
@@ -372,16 +280,16 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--in', dest='params', type=str, required=('-g' not in sys.argv) and ('--gen' not in sys.argv),
                         help='Path to params file')
 
-    # generate a sample file
-    parser.add_argument('-g', '--gen', dest='gen', action='store_true',
-                        help='Generate a sampleparams.txt file and exit.')
-
     # path to database parts
     parser.add_argument('-db', '--database', dest='db', required=('-g' not in sys.argv) and ('--gen' not in sys.argv), 
                         help='Path to database parts')
 
     parser.add_argument('-dat', '--dataset', dest='dataset', required=('-g' not in sys.argv) and ('--gen' not in sys.argv),
                         help = 'Path to MS/MS dataset')
+
+    # generate a sample file
+    parser.add_argument('-g', '--gen', dest='gen', action='store_true',
+                        help='Generate a sampleparams.txt file and exit.')
 
     # parse arguments
     args = parser.parse_args()
@@ -457,8 +365,8 @@ if __name__ == '__main__':
     parameters['optimize'] = True
 
     # search settings
-    parameters['dbparts'] = dataset
-    parameters['ms2data'] = db
+    parameters['dbparts'] = db
+    parameters['ms2data'] = dataset
     parameters['nmods'] = 0
     parameters['madded'] = 0
     parameters['mods'] = []
@@ -735,8 +643,6 @@ if __name__ == '__main__':
     #
 
     # Create a workspace directory
-    # print ('\nInit workspace at: ', parameters['workspace'])
-
     os.makedirs(parameters['workspace'], exist_ok=True)
 
     # Create the output directory for results
@@ -1038,12 +944,6 @@ if __name__ == '__main__':
 # ------------------------------ Launch HiCOPS -------------------------------------------
 #
 
-    # Generate hicops job script
-    genMPI_OpenMPScript(workspace = parameters['workspace'], jobname = 'hicops', account = parameters['account'], output = parameters['workspace'] + '/output/hicops.%j.%N.out', partition = 'compute', nodes = str(parameters['nodes']), ntasks_per_socket = str(parameters['ntasks_per_socket']), time = parameters['jobtime'], cpus_per_task = str(parameters['cpus_per_task']), ntasks = str(parameters['ntasks']), bindto = parameters['bindto'], mapby = parameters['mapby'], mailto = parameters['mail'], username = parameters['username'], events = parameters['evts'],  command = hicopspath + '/bin/hicops', args = uparams)
-
-    # Generate psm2tsv job script
-    genSimpleScript(workspace = parameters['workspace'], jobname = 'postprocess', account = parameters['account'], output = parameters['workspace'] + '/output/postprocess.%j.out', partition = 'shared', nodes = '1', ntasks_per_node = '1', time = '00:25:00', mailto = parameters['mail'], username = parameters['username'], events = parameters['evts'], command = hicopspath + '/bin/tools/psm2tsv ', args = '-i ' + parameters['workspace'] + '/output')
-
     # SLURM 
 
     # Run HiCOPS
@@ -1060,16 +960,11 @@ if __name__ == '__main__':
     print ('\nHiCOPS is now running. job_ids:', hicops_id, post_id, '\n')
     print ('You can check the job progress by: \n')
     print ('squeue -j ' + str(hicops_id) + ',' + str(post_id), ' \n')
-    print ('\nOR\n')
+    print ('OR')
     print ('sacct -j ' + str(hicops_id) + ',' + str(post_id), ' \n')
-    # print ('The output will be written at: '+ parameters['workspace'] + '/output')
 
     print ('\nSUCCESS\n')
 
-    # print ('After job completion, run:\n')
-    # print ('sbatch ' + parameters['workspace'] + '/autogen/postprocess')
-    # print ('\nOR\n')
-    # print ('srun -A=wmu101 --partition=compute --nodes=1 --ntasks-per-node=1 --cpus-per-task=1 -t 00:25:00 --export=ALL ' + hicopspath + '/tools/psm2excel -i ' + parameters['workspace'] + '/output\n')
 
     print ('-----------------------------------------')
     print ('|  Read more: https://hicops.github.io  |')

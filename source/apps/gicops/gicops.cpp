@@ -269,7 +269,7 @@ status_t main(int_t argc, char_t* argv[])
         }
     }
 
-        /* We don't need the original data anymore */
+    // we don't need the allocated memory anymore
     if (status == SLM_SUCCESS)
         status = DSLIM_DeallocateSpecArr();
 

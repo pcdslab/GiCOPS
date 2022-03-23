@@ -113,8 +113,8 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
     int_t cputhreads = params.threads;
 
 #if 1 // defined (GPU) && defined (CUDA)
-    cputhreads -= 1;
-
+    int_t gputhreads = 8;
+    cputhreads -= gputhreads;
 #endif // GPU && CUDA
 
     // get the ptrs instance
@@ -206,27 +206,28 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
 
             // ------------------------------------------------------------ //
 
-            // launch the GPU thread
-            auto gputhread = std::thread(workerthread, true);
-
             // launch CPU threads
-            std::vector<std::thread> wThreads(cputhreads);
+            std::vector<std::thread> wThreads(gputhreads + cputhreads);
+
+            for (int gth = 0 ; gth < gputhreads; gth++)
+                wThreads.push_back(std::move(std::thread(workerthread, true)));
 
             for (int cth = 0 ; cth < cputhreads; cth++)
                 wThreads.push_back(std::move(std::thread(workerthread, false)));
-
-            gputhread.join();
 
             // make sure all GPU threads are done
             for (auto& wth : wThreads)
             {
                 if (wth.joinable())
                 {
-                    try{
+                    try
+                    {
                         wth.join();
-                    } 
-                    catch (const std::system_error& e) {
+                    }
+                    catch (const std::system_error& e)
+                    {
                         std::cerr << "Thread Joining Error: " << e.what() << std::endl;
+                        std::cerr << "Ignoring as simply joined too soon.." << std::endl;
                     }
                 }
             }

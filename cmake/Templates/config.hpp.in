@@ -58,8 +58,8 @@
 // Max RX buffer size = 512MB 
 #define  RXBUFFERSIZE                 (512 * 1024 * 1024)
 
-// chunk size in number ions per chunk (def: 2 billion)
-#define MAX_IONS                       0x80000000
+// chunk size in number ions per chunk (def: 1 billion)
+#define MAX_IONS                       0x40000000
 
 // number of X-axis samples in the histogram
 #define Xsamples                128

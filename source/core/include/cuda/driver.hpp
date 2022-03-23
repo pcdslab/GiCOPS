@@ -93,7 +93,7 @@ public:
         auto manager = gpu_manager::get_instance();
         error_check(cudaSetDevice(manager.gpu_id()));
         std::cout << "DRIVER: Setting Device to: " << manager.gpu_id() << std::endl;
-        error_check(cudaStreamCreate(&stream));
+        error_check(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
         error_check(cudaEventCreateWithFlags(&d2h, cudaEventBlockingSync));
         error_check(cudaEventCreateWithFlags(&kernel1, cudaEventBlockingSync));
         error_check(cudaEventCreateWithFlags(&kernel2, cudaEventBlockingSync));
@@ -147,10 +147,11 @@ public:
 
     // ------------------------------------------------------------------------------------ //
 
-    // FIXME: Is this correct? Only ONE instance / MPI process
+    // We can have multiple concurrent resident kernels 
+    // per devicedepending on device compute capability
     static driver* get_instance()
     {
-        static driver instance;
+        static thread_local driver instance;
         return &instance;
     }
 };
@@ -217,6 +218,14 @@ auto device_allocate(T *&ptr, size_t size)
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
+auto device_allocate_async(T *&ptr, size_t size, driver *drv)
+{
+    return cudaMallocAsync(&ptr, size * sizeof(T), drv->stream);
+}
+
+// ------------------------------------------------------------------------------------ //
+
+template <typename T>
 auto host_pinned_free(T *&ptr)
 {
     return cudaFreeHost(ptr);
@@ -232,6 +241,13 @@ auto device_free(T *&ptr)
     ptr = nullptr;
 }
 
+// ------------------------------------------------------------------------------------ //
+
+template <typename T>
+auto device_free_async(T *&ptr, driver *drv)
+{
+    return cudaFreeAsync(ptr, drv->stream);
+}
 
 }; //namespace cuda
 

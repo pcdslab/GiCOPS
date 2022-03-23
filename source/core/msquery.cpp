@@ -192,12 +192,7 @@ std::array<int, 2> MSQuery::convertAndprepMS2bin(string *filename)
                     largestspec = max(specsize, largestspec);
 
                     // specsize will update here
-#if 0 // GPU && CUDA
-                    // FIXME: DO NOT ENABLE THIS CODE. WILL WREAK HAVOC
-                    hcp::gpu::cuda::s2::pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
-#else
                     MSQuery::pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
-#endif // GPU && CUDA
 
                     // write the updated specsize
                     lens[count] = specsize;
@@ -309,12 +304,7 @@ std::array<int, 2> MSQuery::convertAndprepMS2bin(string *filename)
         largestspec = max(specsize, largestspec);
 
         // specsize will update here
-#if 0 // GPU && CUDA
-        // FIXME: DO NOT ENABLE THIS CODE. WILL WREAK HAVOC
-        hcp::gpu::cuda::s2::pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
-#else
         MSQuery::pickpeaks(mzs, intns, specsize, m_idx, m_intns, m_mzs);
-#endif // GPU && CUDA
 
         // update lens and counts
         lens[count] = specsize;

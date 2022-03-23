@@ -51,15 +51,15 @@ status_t main(int_t argc, char_t* argv[])
     }
 
     // allocate device memory
-    cuda::error_check(cuda::device_allocate(d_a, n));
-    cuda::error_check(cuda::device_allocate(d_b, n));
-    cuda::error_check(cuda::device_allocate(d_c, n));
+    cuda::error_check(cuda::device_allocate_async(d_a, n, driver));
+    cuda::error_check(cuda::device_allocate_async(d_b, n, driver));
+    cuda::error_check(cuda::device_allocate_async(d_c, n, driver));
 
     // copy data to device
     cuda::error_check(cuda::H2D(d_a, h_a, n, driver));
     cuda::error_check(cuda::H2D(d_b, h_b, n, driver));
 
-    driver->stream_sync();
+    //driver->stream_sync();
 
     // run kernel
     cudaFuncSetAttribute(vector_add<float>, cudaFuncAttributeMaxDynamicSharedMemorySize, 48*1024);
@@ -68,10 +68,12 @@ status_t main(int_t argc, char_t* argv[])
     // copy data back to host
     cuda::error_check(cuda::D2H(h_c, d_c, n, driver));
 
+    //driver->stream_sync();
+
     // free device memory
-    cuda::error_check(cuda::device_free(d_a));
-    cuda::error_check(cuda::device_free(d_b));
-    cuda::error_check(cuda::device_free(d_c));
+    cuda::error_check(cuda::device_free_async(d_a, driver));
+    cuda::error_check(cuda::device_free_async(d_b, driver));
+    cuda::error_check(cuda::device_free_async(d_c, driver));
 
     driver->stream_sync();
 

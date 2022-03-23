@@ -111,22 +111,33 @@ __host__ void initMods(SLM_vMods *vMods)
 
 __host__ void exclusiveScan(uint_t *array, int size, int init)
 {
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+
     // initialize a device vector
-    thrust::device_vector<uint_t> d_array(array, array + size);
+    uint_t *d_array = nullptr;
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_array, size, driver));
+
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_array, array, size, driver));
+
+    //thrust::device_vector<uint_t> d_array(array, array + size);
 
     // compute exclusive scan
-    thrust::exclusive_scan(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_array.begin(), d_array.end(), d_array.begin(), init);
+    thrust::exclusive_scan(thrust::device.on(driver->get_stream()), d_array, d_array + size, d_array, init);
 
     // copy back to host
-    thrust::copy(d_array.begin(), d_array.end(), array);
+    hcp::gpu::cuda::error_check(D2H(array, d_array, size, driver));
+    // thrust::copy(d_array.begin(), d_array.end(), array);
+
+    // free device memory
+    hcp::gpu::cuda::device_free_async(d_array, driver);
 }
 
 // -------------------------------------------------------------------------------------------- //
 __host__ void SortPeptideIndex(Index *index)
 {
     // extract all peptide masses in an array to simplify computations
-    float_t *h_mzs = nullptr;
-    hcp::gpu::cuda::host_pinned_allocate<float_t>(h_mzs, index->lcltotCnt);
+    float_t *h_mzs = new float_t[index->lcltotCnt];
+    // hcp::gpu::cuda::host_pinned_allocate<float_t>(h_mzs, index->lcltotCnt);
 
 #if defined (USE_OMP)
 #pragma omp parallel for num_threads(threads) schedule (static)
@@ -139,7 +150,12 @@ __host__ void SortPeptideIndex(Index *index)
         SortpepEntries(index, h_mzs);
 
         // free the masses array
-        hcp::gpu::cuda::host_pinned_free(h_mzs);
+        delete[] h_mzs;
+        h_mzs = nullptr;
+
+        // no need for pinned memory as only one use
+        //hcp::gpu::cuda::host_pinned_free(h_mzs);
+
 }
 
 // -------------------------------------------------------------------------------------------- //
@@ -149,22 +165,35 @@ void SortpepEntries(Index *index, float_t *h_mz)
 {
     auto pepIndex = index->pepEntries;
     auto size = index->lcltotCnt;
+    auto driver = hcp::gpu::cuda::driver::get_instance();
 
     // initialize device vector with mzs
-    thrust::device_vector<float_t> d_pepMZs(h_mz, h_mz + size);
+    float_t *d_pepMZs = nullptr;
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_pepMZs, size, driver));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_pepMZs, h_mz, size, driver));
+    
+    //thrust::device_vector<float_t> d_pepMZs(h_mz, h_mz + size);
 
     // initilize values to sequence
-    thrust::device_vector<int> d_indices(size);
-    thrust::sequence(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_indices.begin(), d_indices.end());
+    int *d_indices = nullptr;
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_indices, size, driver));
+    //thrust::device_vector<int> d_indices(size);
+    thrust::sequence(thrust::device.on(driver->get_stream()), d_indices, d_indices+size);
 
     // sort the values using MZs as keys
-    thrust::sort_by_key(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_pepMZs.begin(), d_pepMZs.end(), d_indices.begin());
+    thrust::sort_by_key(thrust::device.on(driver->get_stream()), d_pepMZs, d_pepMZs+size, d_indices);
 
     // vector to store sorted indices
-    std::vector<int> h_sorted_indices(size);
+    int *h_sorted_indices = new int[size];
+    // std::vector<int> h_sorted_indices(size);
 
     // copy sorted MZs to host vector
-    thrust::copy(d_indices.begin(), d_indices.end(), h_sorted_indices.begin());
+    hcp::gpu::cuda::error_check(D2H(h_sorted_indices, d_indices, size, driver));
+    //thrust::copy(d_indices.begin(), d_indices.end(), h_sorted_indices.begin());
+
+    // deallocate device memory as well
+    hcp::gpu::cuda::device_free_async(d_indices, driver);
+    hcp::gpu::cuda::device_free_async(d_pepMZs, driver);
 
     // allocate a new pepEntry array
     pepEntry *pepEntries = new pepEntry[size];
@@ -187,6 +216,8 @@ void SortpepEntries(Index *index, float_t *h_mz)
     // update the index->pepIndex with the new one
     index->pepEntries = pepEntries;
 
+    // remove h_sorted_indices
+    delete[] h_sorted_indices;
     return;
 }
 
@@ -195,17 +226,26 @@ void SortpepEntries(Index *index, float_t *h_mz)
 // stable sort fragment-ion data on GPU
 __host__ void StableKeyValueSort(uint_t *d_keys, uint_t* h_data, int size)
 {
-    // initialize device vector
-    thrust::device_vector<uint_t> d_data(size);
+    auto driver = hcp::gpu::cuda::driver::get_instance();
 
+    uint_t *d_data = nullptr;
+
+    // initialize device vector
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_data, size, driver));
+
+    //thrust::device_vector<uint_t> d_data(size);
     // enumerate indices
-    thrust::sequence(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_data.begin(), d_data.end());
+    thrust::sequence(thrust::device.on(driver->get_stream()), d_data, d_data + size);
 
     // sort the data using keys
-    thrust::stable_sort_by_key(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_keys, d_keys + size, d_data.begin());
+    thrust::stable_sort_by_key(thrust::device.on(driver->get_stream()), d_keys, d_keys + size, d_data);
 
     // copy sorted data to host array
-    thrust::copy(d_data.begin(), d_data.end(), h_data);
+    hcp::gpu::cuda::error_check(D2H(h_data, d_data, size, driver));
+    //thrust::copy(d_data.begin(), d_data.end(), h_data);
+
+    // free the device array
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_data, driver));
 
     return;
 }
@@ -214,11 +254,11 @@ __host__ void StableKeyValueSort(uint_t *d_keys, uint_t* h_data, int size)
 
 __host__  uint_t*& getFragIon()
 {
-    static uint_t *d_fragIon = nullptr;
+    static thread_local uint_t *d_fragIon = nullptr;
 
     // allocate device vector only once
     if (d_fragIon == nullptr)
-        hcp::gpu::cuda::device_allocate(d_fragIon, MAX_IONS);
+        hcp::gpu::cuda::device_allocate_async(d_fragIon, MAX_IONS, hcp::gpu::cuda::driver::get_instance());
 
     return d_fragIon;
 }
@@ -227,14 +267,19 @@ __host__  uint_t*& getFragIon()
 
 __host__ void freeFragIon()
 {
+    auto driver = hcp::gpu::cuda::driver::get_instance();
     auto d_fragIon = getFragIon();
 
     // free the device vector only once
     if (d_fragIon != nullptr)
     {
-        hcp::gpu::cuda::device_free(d_fragIon);
+        hcp::gpu::cuda::device_free_async(d_fragIon, driver);
         d_fragIon = nullptr;
     }
+
+    // must sync here to release all allocated memory 
+    // before next superstep
+    driver->stream_sync();
 
     return;
 }
@@ -277,7 +322,7 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
 
     if (d_pepEntries == nullptr)
     {
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_pepEntries, index->lcltotCnt));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_pepEntries, index->lcltotCnt, driver));
         // copy peptide entries to device
         hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_pepEntries, index->pepEntries, index->lcltotCnt, driver));
     }
@@ -286,7 +331,7 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
 
     if (d_seqs == nullptr)
     {
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_seqs, index->pepIndex.AAs));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_seqs, index->pepIndex.AAs, driver));
         // copy peptide sequences to device
         hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_seqs, index->pepIndex.seqs, index->pepIndex.AAs, driver));
     }
@@ -318,12 +363,15 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
     // free memory
     if (lastChunk == true)
     {
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_pepEntries));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_pepEntries, driver));
         d_pepEntries = nullptr;
 
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_seqs));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_seqs, driver));
         d_seqs = nullptr;
     }
+
+    // synchronize stream
+    driver->stream_sync();
 
     return status;
 }
@@ -335,20 +383,29 @@ __host__ void ConstructbA(Index *index, size_t iAsize, uint chunk_number)
     // size of the bA
     uint_t bAsize = ((uint_t)(params.max_mass * params.scale)) + 1;
 
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+
     // device vector for fragment-ion data
     auto d_sortedFragIon = getFragIon();
 
     // device vector for bA data
-    thrust::device_vector<uint_t> d_bA(bAsize);
+    uint_t *d_bA = nullptr;
+
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_bA, bAsize, driver));
+    //thrust::device_vector<uint_t> d_bA(bAsize);
 
     // enumerate indices
-    thrust::sequence(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_bA.begin(), d_bA.end());
+    thrust::sequence(thrust::device.on(driver->get_stream()), d_bA, d_bA + bAsize);
 
     // binary search the start of each ion and store in d_bA
-    thrust::lower_bound(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_sortedFragIon, d_sortedFragIon + iAsize, d_bA.begin(), d_bA.end(), d_bA.begin());
+    thrust::lower_bound(thrust::device.on(driver->get_stream()), d_sortedFragIon, d_sortedFragIon + iAsize, d_bA, d_bA + bAsize, d_bA);
 
     // copy bA data back to CPU
-    thrust::copy(d_bA.begin(), d_bA.end(), index->ionIndex[chunk_number].bA);
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(index->ionIndex[chunk_number].bA, d_bA, bAsize, driver));
+    //thrust::copy(d_bA, d_bA + bAsize, index->ionIndex[chunk_number].bA);
+
+    // free memory
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_bA, driver));
 }
 
 // -------------------------------------------------------------------------------------------- //

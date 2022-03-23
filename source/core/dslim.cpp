@@ -747,8 +747,7 @@ status_t DSLIM_DeallocateSpecArr()
 
 #endif // defined (GPU) && defined(CUDA)
 
-    /* Nothing really to return
-     * so success */
+    // nothing really to return so success
     return SLM_SUCCESS;
 }
 

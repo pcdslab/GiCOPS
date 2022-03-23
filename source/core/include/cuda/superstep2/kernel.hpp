@@ -41,9 +41,8 @@ std::array<int, 2> readAndPreprocess(string_t& filename);
 // function to preprocess MS2 data and convert to binary
 void preprocess(MSQuery *, string_t &, int);
 
-status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int & m_idx, int count, int maxslen, spectype_t *m_intn, spectype_t *m_mzs, bool last = false);
-
-status_t pickpeaks(std::vector<spectype_t> &mzs, std::vector<spectype_t> &intns, int &specsize, int m_idx, spectype_t *m_intns, spectype_t *m_mzs);
+// gpu arraysort kernel
+status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int & m_idx, int count, int maxslen, spectype_t *m_intn, spectype_t *m_mzs);
 
 } // namespace s1
 

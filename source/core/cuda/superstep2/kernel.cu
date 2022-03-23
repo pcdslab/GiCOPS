@@ -245,10 +245,10 @@ __global__ void generateArrayNums(int N, int * d_lens, T *d_arraynums, spectype_
 //
 // The GPU-ArraySort kernel
 //
-status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int count, int maxslen, spectype_t *m_intn, spectype_t *m_mzs, bool last)
+status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int count, int maxslen, spectype_t *m_intn, spectype_t *m_mzs)
 {
     // get driver object
-    static auto driver = hcp::gpu::cuda::driver::get_instance();
+    auto driver = hcp::gpu::cuda::driver::get_instance();
 
     // device ptrs for raw and processed data and lengths
     static thread_local spectype_t * d_intns = nullptr;
@@ -263,9 +263,12 @@ status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int 
     static thread_local spectype_t *d_m_intns = nullptr;
     static thread_local spectype_t *d_m_mzs = nullptr;
 
+    // the raw buffer size
+    int rawsize = idx;
+
     // temporary vector for data gathering
     static thread_local spectype_t *d_tmp = nullptr;
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_tmp, BATCHSIZE * TEMPVECTOR_SIZE));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_tmp, rawsize, driver)); //BATCHSIZE * TEMPVECTOR_SIZE));
 
     // -------------------------------------------------------------------------------------------- //
 
@@ -275,44 +278,44 @@ status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int 
 
     // memory for intensities
     if (d_intns == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_intns, BATCHSIZE * TEMPVECTOR_SIZE));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_intns, rawsize, driver)); //BATCHSIZE * TEMPVECTOR_SIZE));
 
     // transfer intensities to the GPU
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_intns, intns, idx, driver));
 
     // memory for m/zs
     if (d_mzs == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_mzs, BATCHSIZE * TEMPVECTOR_SIZE));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_mzs, rawsize, driver)); //BATCHSIZE * TEMPVECTOR_SIZE));
 
     // transfer m/zs to the GPU
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_mzs, mzs, idx, driver));
 
     // memory for processed intensities
     if (d_m_intns == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_m_intns, QALEN * BATCHSIZE));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_intns, QALEN * BATCHSIZE, driver));
 
     // memory for processed mzs
     if (d_m_mzs == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_m_mzs, QALEN * BATCHSIZE));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_mzs, QALEN * BATCHSIZE, driver));
 
     // memory for indices
     if (d_indices == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_indices, BATCHSIZE * TEMPVECTOR_SIZE));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_indices, rawsize, driver)); //BATCHSIZE * TEMPVECTOR_SIZE));
 
     // memory for spectrum lengths
     if (d_lens == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_lens, BATCHSIZE+1));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_lens, BATCHSIZE+1, driver));
 
     // transfer lengths to the GPU
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_lens, lens, count, driver));
 
     // memory for new spectrum lengths
     if (d_m_lens == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_m_lens, BATCHSIZE+1));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_lens, BATCHSIZE+1, driver));
 
     // memory for arraynums
     if (d_arraynums == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate(d_arraynums, BATCHSIZE * TEMPVECTOR_SIZE));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_arraynums, rawsize, driver)); //BATCHSIZE * TEMPVECTOR_SIZE));
 
     // -------------------------------------------------------------------------------------------- //
 
@@ -420,21 +423,23 @@ status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int 
 
     // -------------------------------------------------------------------------------------------- //
 
-    // delete the thread_local memory if last batch
+    // free the GPU memory
 
-    if (last)
-    {
-        // free the memories
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_mzs));
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_intns));
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_arraynums));
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_indices));
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_tmp));
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_m_mzs));
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_m_intns));
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_lens));
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free(d_m_lens));
-    }
+    // if (last)
+    //{
+
+    // free the memories
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_mzs, driver));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_intns, driver));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_arraynums, driver));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_indices, driver));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_tmp, driver));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_m_mzs, driver));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_m_intns, driver));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_lens, driver));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_m_lens, driver));
+
+    //}
 
     // return success status
     return SLM_SUCCESS;
@@ -516,7 +521,7 @@ std::array<int, 2> readAndPreprocess(string_t &filename)
                     if (count == BATCHSIZE)
                     {
                         // lens will update after this
-                        hcp::gpu::cuda::s2::ArraySort(intns, mzs, lens, m_idx, count, largestspec_loc, m_intns, m_mzs, false);
+                        hcp::gpu::cuda::s2::ArraySort(intns, mzs, lens, m_idx, count, largestspec_loc, m_intns, m_mzs);
 
                         // flush to the binary file
                         MSQuery::flushBinaryFile(&filename, m_mzs, m_intns, rtimes, prec_mz, z, lens, count);
@@ -625,7 +630,7 @@ std::array<int, 2> readAndPreprocess(string_t &filename)
         globalcount++;
 
         // lens will update after this
-        hcp::gpu::cuda::s2::ArraySort(intns, mzs, lens, m_idx, count, largestspec_loc, m_intns, m_mzs, true);
+        hcp::gpu::cuda::s2::ArraySort(intns, mzs, lens, m_idx, count, largestspec_loc, m_intns, m_mzs);
 
         // flush the last batch to the binary file
         MSQuery::flushBinaryFile(&filename, m_mzs, m_intns, rtimes, prec_mz, z, lens, count, true);
@@ -638,7 +643,7 @@ std::array<int, 2> readAndPreprocess(string_t &filename)
         delete qqfile;
     }
     else
-        cout << "Error: Unable to open file: " << filename << endl;
+        std::cout << "Error: Unable to open file: " << filename << std::endl;
 
     largestspec = max(specsize, largestspec);
 
@@ -654,83 +659,6 @@ std::array<int, 2> readAndPreprocess(string_t &filename)
 
     // return global count and largest spectrum length
     return std::array<int, 2>{globalcount, largestspec};
-}
-
-// -------------------------------------------------------------------------------------------- //
-
-//
-// kernel to rearrange the data into output vectors
-//
-status_t pickpeaks(std::vector<spectype_t> &mzs, std::vector<spectype_t> &intns, int &specsize, int m_idx, spectype_t *m_intns, spectype_t *m_mzs)
-{
-    int_t SpectrumSize = specsize;
-
-    static auto driver = hcp::gpu::cuda::driver::get_instance();
-
-    auto intnArr = m_intns + m_idx;
-    auto mzArr = m_mzs + m_idx;
-
-    static thread_local thrust::device_vector<spectype_t> d_intns(TEMPVECTOR_SIZE);
-    static thread_local thrust::device_vector<spectype_t> d_mzs(TEMPVECTOR_SIZE);
-
-    if (SpectrumSize)
-    {
-        thrust::copy(intns.begin(), intns.begin() + SpectrumSize, d_intns.begin());
-        thrust::copy(mzs.begin(), mzs.begin() + SpectrumSize, d_mzs.begin());
-
-        driver->stream_sync();
-   
-        // sort by key
-        thrust::sort_by_key(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_intns.begin(), d_intns.end(), d_mzs.begin());
-
-        // intensity normalization applied
-        double factor = ((double_t) params.base_int / intns[SpectrumSize - 1]);
-
-        // filter out intensities > params.min_int (or 1% of base peak)
-        auto l_min_int = params.min_int; //0.01 * dIntArr[SpectrumSize - 1];
-
-        // beginning position of noramlization region
-        auto bpos = d_intns.begin();
-
-        if (SpectrumSize > QALEN)
-            bpos = d_intns.end() - QALEN;
-
-        thrust::transform(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), bpos, d_intns.end(), thrust::make_constant_iterator(factor), bpos, thrust::multiplies<double>());
-
-        // filter out top 100 or intensity > min peaks
-        auto p_beg = thrust::lower_bound(thrust::device.on(hcp::gpu::cuda::driver::get_instance()->get_stream()), d_intns.begin(), d_intns.end(), l_min_int);
-
-        int newspeclen = thrust::distance(p_beg, d_intns.end());
-
-        /* Check the size of spectrum */
-        if (newspeclen >= QALEN)
-        {
-            /* Copy the last QALEN elements to expSpecs */
-            thrust::copy((d_mzs.end() - QALEN), d_mzs.end(), mzArr);
-            thrust::copy((d_intns.end() - QALEN), d_intns.end(), intnArr);
-
-            // if larger than QALEN then only write the last QALEN elements and set the new length
-            newspeclen = QALEN;
-        }
-        else
-        {
-            /* Copy the last QALEN elements to expSpecs */
-            thrust::copy((d_mzs.end() - newspeclen), d_mzs.end(), mzArr);
-            thrust::copy((d_intns.end() - newspeclen), d_intns.end(), intnArr);
-        }
-
-        driver->stream_sync();
-
-        // assign the new length to specsize
-        specsize = newspeclen;
-    }
-    else
-    {
-        std::cerr << "Spectrum size is zero" << endl;
-        //std::fill(intns.begin(), intns.end(), 0);
-    }
-
-    return SLM_SUCCESS;
 }
 
 // -------------------------------------------------------------------------------------------- //

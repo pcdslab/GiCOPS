@@ -29,7 +29,7 @@ namespace cuda
 {
 
 #define error_check(ans)                   check((ans), __FILE__, __LINE__)
-
+#define STREAMS_THREAD                     4
 
 // ------------------------------------------------------------------------------------ //
 
@@ -80,7 +80,7 @@ class driver
 {
 public:
 
-    cudaStream_t stream;
+    cudaStream_t stream[STREAMS_THREAD];
     cudaEvent_t d2h;
     cudaEvent_t h2d;
     cudaEvent_t kernel1;
@@ -93,7 +93,10 @@ public:
         auto manager = gpu_manager::get_instance();
         error_check(cudaSetDevice(manager.gpu_id()));
         std::cout << "DRIVER: Setting Device to: " << manager.gpu_id() << std::endl;
-        error_check(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+
+        for (int i = 0; i < STREAMS_THREAD; i++)
+            error_check(cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking));
+        
         error_check(cudaEventCreateWithFlags(&d2h, cudaEventBlockingSync));
         error_check(cudaEventCreateWithFlags(&kernel1, cudaEventBlockingSync));
         error_check(cudaEventCreateWithFlags(&kernel2, cudaEventBlockingSync));
@@ -102,7 +105,9 @@ public:
     // ------------------------------------------------------------------------------------ //
     ~driver()
     {
-        error_check(cudaStreamDestroy(stream));
+        for (int i = 0; i < STREAMS_THREAD; i++)
+            error_check(cudaStreamDestroy(stream[i]));
+
         error_check(cudaEventDestroy(d2h));
         error_check(cudaEventDestroy(kernel1));
         error_check(cudaEventDestroy(kernel2));
@@ -110,21 +115,29 @@ public:
 
     // ------------------------------------------------------------------------------------ //
 
-    void stream_sync()
+    void stream_sync(int i = 0)
     {
-        error_check(cudaStreamSynchronize(stream));
+        error_check(cudaStreamSynchronize(stream[i]));
     }
 
     // ------------------------------------------------------------------------------------ //
 
-    void event_sync(cudaEvent_t event)
+    void all_streams_sync()
+    {
+        for (int i = 0; i < STREAMS_THREAD; i++)
+            error_check(cudaStreamSynchronize(stream[i]));
+    }
+
+    // ------------------------------------------------------------------------------------ //
+
+    void event_sync(cudaEvent_t &event)
     {
         error_check(cudaEventSynchronize(event));
     }
 
     // ------------------------------------------------------------------------------------ //
 
-    bool event_query(cudaEvent_t event)
+    bool event_query(cudaEvent_t &event)
     {
         auto status = cudaEventQuery(event);
 
@@ -140,9 +153,9 @@ public:
 
     // ------------------------------------------------------------------------------------ //
 
-    auto& get_stream() const
+    auto& get_stream(int i = 0) const
     {
-        return stream;
+        return stream[i];
     }
 
     // ------------------------------------------------------------------------------------ //
@@ -160,43 +173,45 @@ public:
 
 // CUDA driver functions
 template <typename T>
-auto H2D(T *&dst, T *&src, const size_t size, driver* drv)
+auto H2D(T *&dst, T *&src, const size_t size, const cudaStream_t &stream)
 {
-    return cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyHostToDevice, drv->stream);
+    return cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyHostToDevice, stream);
 }
 
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto H2D_withEvent(T *&dst,  T *&src, const size_t size, driver* drv)
+auto H2D_withEvent(T *&dst,  T *&src, const size_t size, const cudaStream_t &stream)
 {
-    cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyHostToDevice, drv->stream);
-    return cudaEventRecord(drv->h2d, drv->stream);
+    auto drv = driver::get_instance();
+    cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyHostToDevice, stream);
+    return cudaEventRecord(drv->h2d, stream);
 }
 
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto D2H(T *&dst, T *&src, const size_t size, driver* drv)
+auto D2H(T *&dst, T *&src, const size_t size, const cudaStream_t &stream)
 {
-    return cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyDeviceToHost, drv->stream);
+    return cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyDeviceToHost, stream);
 }
 
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto D2H_withEvent(T *&dst, T *&src, const size_t size, driver* drv)
+auto D2H_withEvent(T *&dst, T *&src, const size_t size, const  cudaStream_t &stream)
 {
-    cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyDeviceToHost, drv->stream);
-    return cudaEventRecord(drv->d2h, drv->stream);
+    auto drv = driver::get_instance();
+    cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyDeviceToHost, stream);
+    return cudaEventRecord(drv->d2h, stream);
 }
 
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto D2D(T *&dst, T *&src, const size_t size, driver* drv)
+auto D2D(T *&dst, T *&src, const size_t size, const cudaStream_t &stream)
 {
-    return cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyDeviceToDevice, drv->stream);
+    return cudaMemcpyAsync(dst, src, size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
 }
 
 // ------------------------------------------------------------------------------------ //
@@ -218,9 +233,9 @@ auto device_allocate(T *&ptr, size_t size)
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto device_allocate_async(T *&ptr, size_t size, driver *drv)
+auto device_allocate_async(T *&ptr, size_t size, const cudaStream_t &stream)
 {
-    return cudaMallocAsync(&ptr, size * sizeof(T), drv->stream);
+    return cudaMallocAsync(&ptr, size * sizeof(T), stream);
 }
 
 // ------------------------------------------------------------------------------------ //
@@ -244,9 +259,9 @@ auto device_free(T *&ptr)
 // ------------------------------------------------------------------------------------ //
 
 template <typename T>
-auto device_free_async(T *&ptr, driver *drv)
+auto device_free_async(T *&ptr, const cudaStream_t &stream)
 {
-    return cudaFreeAsync(ptr, drv->stream);
+    return cudaFreeAsync(ptr, stream);
 }
 
 }; //namespace cuda

@@ -19,17 +19,11 @@
 
 #include <cuda.h>
 #include <string>
-#include <thrust/host_vector.h>
-#include <thrust/device_vector.h>
-#include <thrust/copy.h>
-#include <thrust/fill.h>
 #include <thrust/gather.h>
 #include <thrust/sort.h>
 #include <thrust/scan.h>
 #include <thrust/sequence.h>
 #include <thrust/distance.h>
-#include <thrust/transform.h>
-#include <thrust/binary_search.h>
 #include <thrust/functional.h>
 #include <thrust/execution_policy.h>
 

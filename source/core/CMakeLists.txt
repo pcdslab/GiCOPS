@@ -42,7 +42,7 @@ endif()
 
 set_target_properties(hicops-core
     PROPERTIES
-        CXX_STANDARD 17
+        CXX_STANDARD ${CXX_STANDARD}
         CXX_STANDARD_REQUIRED YES
         CXX_EXTENSIONS NO
 )

@@ -22,8 +22,6 @@
 #include <string>
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
-#include <thrust/copy.h>
-#include <thrust/fill.h>
 #include <thrust/sort.h>
 #include <thrust/scan.h>
 #include <thrust/sequence.h>

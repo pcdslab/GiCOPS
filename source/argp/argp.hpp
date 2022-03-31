@@ -137,8 +137,7 @@ struct params_t : public argparse::Args
 
     // LBE distribution policy
 
-    // TODO: requires magic_enum. Add as submodule. 
-    // Meanwhile, the default policy will work.
+    // DistPolicy_t requires magic_enum submodule. 
     DistPolicy_t &lbe_policy             = kwarg("policy", "LBE Distribution policy (chunk, cyclic, zigzag)").set_default(DistPolicy_t::cyclic);
 
     // scratch pad memory in MB

@@ -8,7 +8,7 @@ add_executable(argp ${_EXCLUDE}
 add_dependencies(argp argparse)
 
 # include core/include and generated files
-target_include_directories(argp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../core/include ${CMAKE_BINARY_DIR} ${ARGPARSE_INCLUDE_DIR})
+target_include_directories(argp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../core/include ${CMAKE_BINARY_DIR} ${MAGICENUM_INCLUDE_DIR} ${ARGPARSE_INCLUDE_DIR})
 
 # link appropriate libraries
 target_link_libraries(argp ${MPI_LIBRARIES}) # hicops-core not needed linking

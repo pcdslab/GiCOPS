@@ -8,7 +8,7 @@ add_executable(hicops ${_EXCLUDE}
 add_dependencies(hicops argparse)
 
 # include core/include and generated files
-target_include_directories(hicops PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../core/include ${CMAKE_BINARY_DIR} ${ARGPARSE_INCLUDE_DIR})
+target_include_directories(hicops PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../core/include ${CMAKE_CURRENT_LIST_DIR}/../argp ${CMAKE_BINARY_DIR} ${ARGPARSE_INCLUDE_DIR})
 
 # link appropriate libraries
 target_link_libraries(hicops hicops-core ${MPI_LIBRARIES})

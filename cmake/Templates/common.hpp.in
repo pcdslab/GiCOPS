@@ -90,3 +90,6 @@ using SPECTRUM = double*;   // Theoretical Spectrum
 
 using  thread_t = pthread_t;
 using  lock_t = sem_t;
+
+#define printVar(x)                     std::cout << #x << " = " << x << std::endl
+#define print2Vars(x, y)                std::cout << #x << " = " << x << ", " << #y << " = " << y << std::endl

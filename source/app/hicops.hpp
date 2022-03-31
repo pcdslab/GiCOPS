@@ -21,7 +21,7 @@
 
 #include "lbe.h"
 #include "hicops_instr.hpp"
-#include "argparse/argparse.hpp"
+#include "argp.hpp"
 
 #if defined (USE_TIMEMORY)
 #    include <timemory/timemory.hpp>

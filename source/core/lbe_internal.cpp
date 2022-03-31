@@ -76,7 +76,7 @@ BOOL LBE_ApplyPolicy(Index *index,  BOOL pepmod, uint_t key)
 {
     BOOL value = false;
 
-    DistPolicy policy = params.policy;
+    DistPolicy_t policy = params.policy;
 
     uint_t csize = index->lclmodCnt;
 
@@ -85,11 +85,11 @@ BOOL LBE_ApplyPolicy(Index *index,  BOOL pepmod, uint_t key)
         csize = index->lclpepCnt;
     }
 
-    if (policy == _chunk)
+    if (policy == chunk)
     {
         value = (key / csize) == (params.myid);
     }
-    else if (policy == _cyclic)
+    else if (policy == cyclic)
     {
         value = key % (params.nodes) == params.myid;
     }
@@ -421,7 +421,8 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
     }
     else
     {
-        std::cout << std::endl << "FATAL: Could not read FASTA file" << std::endl;
+        if (params.myid == 0)
+            std::cerr << std::endl << "ABORT: Could not read DB file: " << filename << std::endl;
         status = ERR_INVLD_PARAM;
     }
 

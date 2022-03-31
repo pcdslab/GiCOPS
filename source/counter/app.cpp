@@ -181,15 +181,15 @@ static status_t ParseParams(char_t* paramfile)
 
         if (!line.compare("cyclic"))
         {
-            params.policy = _cyclic;
+            params.policy = cyclic;
         }
         else if (!line.compare("chunk"))
         {
-            params.policy = _chunk;
+            params.policy = chunk;
         }
         else if (!line.compare("zigzag"))
         {
-            params.policy = _zigzag;
+            params.policy = zigzag;
         }
 
         /* Get number of mods */

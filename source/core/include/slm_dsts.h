@@ -32,21 +32,21 @@
 /* Add distribution policies */
 typedef enum _DistPolicy
 {
-    _chunk,
-    _cyclic,
-    _zigzag,
+    chunk,
+    cyclic,
+    zigzag,
 
-} DistPolicy;
+} DistPolicy_t;
 
 typedef struct _SLM_varAA
 {
-    AA     residues[4]   ; /* Modified AA residues in this modification - Upto 4 */
+    AA     residues[5]   ; /* Modified AA residues in this modification - Upto 4 */
     uint_t  modMass        ; /* Scaled mass of the modification                    */
     ushort_t aa_per_peptide; /* Allowed modified residues per peptide sequence     */
 
     _SLM_varAA()
     {
-        residues[0]= '\0';
+        residues[0] = residues[1] = residues[2] = residues[3] = residues[4] = '\0';
         modMass = 0;
         aa_per_peptide = 0;
     }
@@ -387,7 +387,7 @@ typedef struct _globalParams
     string_t workspace;
     string_t modconditions;
 
-    DistPolicy policy;
+    DistPolicy_t policy;
 
     SLM_vMods vModInfo;
 
@@ -403,7 +403,7 @@ typedef struct _globalParams
         expect_max = 20;
         min_shp = 4;
         min_cpsm = 4;
-        base_int = 100000;
+        base_int = 1000000;
         min_int = 0.01 * base_int;
         nodes = 1;
         myid = 0;
@@ -413,8 +413,49 @@ typedef struct _globalParams
         dF = 0;
         dM = 500.0;
         res = 0.01;
-        policy = DistPolicy::_cyclic;
-	}
+        policy = DistPolicy_t::cyclic;
+    }
+
+    void print()
+    {
+        printVar(threads);
+        printVar(maxprepthds);
+        printVar(min_len);
+        printVar(max_len);
+        printVar(maxz);
+        printVar(topmatches);
+        printVar(scale);
+        printVar(expect_max);
+        printVar(min_shp);
+        printVar(min_cpsm);
+        printVar(base_int);
+        printVar(min_int);
+        printVar(nodes);
+        printVar(myid);
+        printVar(spadmem);
+        printVar(min_mass);
+        printVar(max_mass);
+        printVar(dF);
+        printVar(dM);
+        printVar(res);
+        printVar(policy);
+        printVar(dbpath);
+        printVar(datapath);
+        printVar(workspace);
+
+        printVar(modconditions);
+        printVar(vModInfo.num_vars);
+        printVar(vModInfo.vmods_per_pep);
+
+        for (int i = 0 ; i < vModInfo.num_vars; i++)
+        {
+            auto k = vModInfo.vmods[i];
+            printVar(k.residues);
+            printVar(k.modMass);
+            printVar(k.aa_per_peptide);
+        }
+    }
+
 }gParams;
 
 

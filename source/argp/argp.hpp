@@ -136,7 +136,10 @@ struct params_t : public argparse::Args
     double &maxexpect                    = kwarg("e_max,expect_max", "maximum expect value (e-value) to report").set_default(20.0);
 
     // LBE distribution policy
-    DistPolicy_t &lbe_policy             = kwarg("p,policy", "LBE Distribution policy (chunk, cyclic, zigzag)").set_default(DistPolicy_t::cyclic);
+
+    // TODO: requires magic_enum. Add as submodule. 
+    // Meanwhile, the default policy will work.
+    DistPolicy_t &lbe_policy             = kwarg("policy", "LBE Distribution policy (chunk, cyclic, zigzag)").set_default(DistPolicy_t::cyclic);
 
     // scratch pad memory in MB
     int &bufferMBs                       = kwarg("buff,spad_mem", "buffer (scratch pad) RAM memory in MB (recommended: 2048MB+)").set_default(2048);

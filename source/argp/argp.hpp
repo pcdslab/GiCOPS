@@ -95,7 +95,7 @@ struct params_t : public argparse::Args
     string_t &dbpath                     = kwarg("db,database", "path to processed database files (*.pep)").set_default(workdir.value_or(getcurrpath()));
 
     // dataset will be uploaded at the working directory in SGCI
-    string_t &dataset                    = kwarg("dat, dataset", "path to MS/MS dataset (*.ms2 or *.bin)").set_default(workdir.value_or(getcurrpath()));
+    string_t &dataset                    = kwarg("dat, dataset", "path to MS/MS dataset (*.ms2)").set_default(workdir.value_or(getcurrpath()));
 
     // path to a new workspace or make one at currdir)
     string_t &workspace                  = kwarg("w,workspace", "path to the output workspace").set_default(workdir.value_or(getcurrpath()) + "/hicops_workspace_" + getcurrtimeanddate());

@@ -93,3 +93,6 @@ using  lock_t = sem_t;
 
 #define printVar(x)                     std::cout << #x << " = " << x << std::endl
 #define print2Vars(x, y)                std::cout << #x << " = " << x << ", " << #y << " = " << y << std::endl
+
+#define KBYTES(x)                       x * 1024
+#define MBYTES(x)                       x * 1024 * 1024

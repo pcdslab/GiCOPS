@@ -108,7 +108,7 @@ float_t StatMods[26] = {
 /* Macros to extract AA masses */
 #define GETAA(x,z)                 ((AAMass[AAidx(x)]) + (StatMods[AAidx(x)]) + ((PROTON) * (z)))
 
-status_t DBCounter(char_t *filename)
+status_t DBCounter(string &filename)
 {
     status_t status = SLM_SUCCESS;
     string_t line;
@@ -155,7 +155,7 @@ status_t DBCounter(char_t *filename)
     }
     else
     {
-        std::cout << std::endl << "FATAL: Could not read FASTA file" << std::endl;
+        std::cout << std::endl << "FATAL: Could not read the database file: " << filename << std::endl;
         status = ERR_INVLD_PARAM;
     }
 
@@ -179,12 +179,13 @@ status_t DBCounter(char_t *filename)
         file.close();
     }
 
-
-    cumusize += localpeps;
-    ions += (localpeps * ((Seqs.at(0).length() - 1) * params.maxz * iSERIES));
+    if (status == SLM_SUCCESS)
+    {
+        cumusize += localpeps;
+        ions += (localpeps * ((Seqs.at(0).length() - 1) * params.maxz * iSERIES));
+    }
 
     Seqs.clear();
-
     return status;
 }
 

@@ -61,6 +61,21 @@ auto sanitize_res(T &res)
     else if (res > static_cast<T>(5.0)) res = static_cast<T>(5.0);
 }
 
+template <typename T>
+auto sanitize_nmods(T &nmods)
+{
+    // sanitize resolution
+    if (nmods <= static_cast<T>(0)) nmods = static_cast<T>(1);
+    else if (nmods > static_cast<T>(7)) nmods = static_cast<T>(7);
+}
+
+template <typename T>
+auto sanitize_dM(T &dM)
+{
+    // sanitize resolution
+    if (dM < static_cast<T>(0)) dM = static_cast<T>(MBYTES(1));
+}
+
 
 //
 // structure to store parsed params
@@ -168,6 +183,8 @@ void getParams(gParams &params)
     params.datapath = parser.dataset;
     params.workspace = parser.workspace;
 
+#if !defined(ARGP_ONLY)
+
     // COMPILER VERSION GCC 9.1.0+ required 
 #if __GNUC__ > 9 || (__GNUC__ == 9 && (__GNUC_MINOR__ >= 1))
     // COMPILER VERSION GCC 9.1.0+ required for std::filesystem calls
@@ -175,6 +192,9 @@ void getParams(gParams &params)
 #else
     mkdir(parser.workspace.c_str());
 #endif // __GNUC__ > 9
+
+#endif // !ARGP_ONLY
+
 
 #ifdef USE_OMP
     params.threads = parser.threads;
@@ -198,17 +218,18 @@ void getParams(gParams &params)
         params.maxz = parser.maxz;
 
         // Get the m/z axis resolution and sanitize it if needed
-        sanitize_res(parser.resolution);
         params.res = parser.resolution;
+        sanitize_res(params.res);
 
         // compute the scaling factor
-        params.scale = static_cast<int>(1/params.res);
+        params.scale = static_cast<int>(static_cast<double>(1.0)/params.res);
 
         // Get the fragment mass tolerance x scale
         params.dF = parser.deltaF * params.scale;
 
         // Get the precursor mass tolerance
         params.dM = parser.deltaM;
+        sanitize_dM(params.dM);
 
         // Get the min mass 
         params.min_mass = parser.minprecmass;
@@ -235,13 +256,14 @@ void getParams(gParams &params)
         params.min_int = static_cast<double_t>(params.base_int) * parser.cutoff + 0.5;
 
         // Get the scorecard + scratch memory in MBs
-        params.spadmem = parser.bufferMBs *  1024 * 1024;
+        params.spadmem = MBYTES(parser.bufferMBs);
 
         // Get the LBE distribution policy
         params.policy = parser.lbe_policy;
 
         // Get number of mods per peptide
         params.vModInfo.vmods_per_pep = parser.nmods;
+        sanitize_nmods(params.vModInfo.vmods_per_pep);
 
         // get the total number of mods and the mods vector
         if (parser.mods.has_value())
@@ -254,7 +276,7 @@ void getParams(gParams &params)
             params.modconditions = std::to_string(params.vModInfo.vmods_per_pep);
 
             // process the strings: AA:MASS.0:NUM 
-            for (auto md = 0; md < modslist.size(); md++)
+            for (auto md = 0; md < params.vModInfo.vmods_per_pep; md++)
             {
                 // for each mod string
                 auto &mod = modslist[md];
@@ -305,7 +327,6 @@ void getParams(gParams &params)
 #else
     params.myid = 0;
     params.nodes = 1;
-
 #endif /* USE_MPI */
 
 }
@@ -313,6 +334,10 @@ void getParams(gParams &params)
 void parseAndgetParams(int argc, char *argv[], gParams &params)
 {
     auto parser = get_instance(argc, argv);
+
+    if (parser.verbose)
+        parser.print();
+
     return getParams(params);
 }
 
@@ -321,76 +346,81 @@ void printParser()
     // get the static instance of parser. Use 0 and nullptr as not needed anymore.
     auto parser = get_instance();
 
+    // get database path
     printVar(parser.dbpath);
+
+    // get dataset path
     printVar(parser.dataset);
+
+    // get workspace path
     printVar(parser.workspace);
 
+    // get max number of threads
     printVar(parser.threads);
 
+    // get max preprocessing threads
     printVar(parser.prepthreads);
 
+    // Get the min peptide length
+    printVar(parser.minlength);
 
-        // Get the min peptide length
-        printVar(parser.minlength);
+    // Get the max peptide length
+    printVar(parser.maxlength);
 
-        // Get the max peptide length
-        printVar(parser.maxlength);
+    /* Get the max fragment charge */
+    printVar(parser.maxz);
 
-        /* Get the max fragment charge */
-        printVar(parser.maxz);
+    // Get the m/z axis resolution 
+    printVar(parser.resolution);
 
-        // Get the m/z axis resolution 
-        printVar(parser.resolution);
+    // Get the fragment mass tolerance
+    printVar(parser.deltaF);
 
-        // Get the fragment mass tolerance
-        printVar(parser.deltaF);
+    // Get the precursor mass tolerance
+    printVar(parser.deltaM);
 
-        // Get the precursor mass tolerance
-        printVar(parser.deltaM);
+    // Get the min mass 
+    printVar(parser.minprecmass);
 
-        // Get the min mass 
-        printVar(parser.minprecmass);
+    // Get the max mass
+    printVar(parser.maxprecmass);
 
-        // Get the max mass
-        printVar(parser.maxprecmass);
+    // Get the top matches to report
+    printVar(parser.topmatches);
 
-        // Get the top matches to report
-        printVar(parser.topmatches); 
+    // Get the max expect score to report
+    printVar(parser.maxexpect);
 
-        // Get the max expect score to report
-        printVar(parser.maxexpect);
+    /* Get the shp threshold */
+    printVar(parser.min_shp);
 
-        /* Get the shp threshold */
-        printVar(parser.min_shp);
+    /* Get the minhits threshold */
+    printVar(parser.hits);
 
-        /* Get the minhits threshold */
-        printVar(parser.hits);
+    // Base Intensity x 1000
+    printVar(parser.base_int);
 
-        // Base Intensity x 1000
-        printVar(parser.base_int);
+    // Cutoff intensity ratio
+    printVar(parser.cutoff);
 
-        // Cutoff intensity ratio
-        printVar(parser.cutoff);
+    // Get the scorecard + scratch memory in MBs
+    printVar(parser.bufferMBs);
 
-        // Get the scorecard + scratch memory in MBs
-        printVar(parser.bufferMBs);
+    // Get the LBE distribution policy
+    printVar(parser.lbe_policy);
 
-        // Get the LBE distribution policy
-        printVar(parser.lbe_policy);
+    // Get number of mods per peptide
+    printVar(parser.nmods);
 
-        // Get number of mods per peptide
-        printVar(parser.nmods);
-
-        // get the total number of mods and the mods vector
-        if (parser.mods.has_value())
+    // get the total number of mods and the mods vector
+    if (parser.mods.has_value())
+    {
+        auto modsvect = parser.mods.value();
+        for (auto &mod : modsvect)
         {
-            auto modsvect = parser.mods.value();
-
-            for (auto &mod : modsvect)
-            {
-                std::cout <<"mod = " << mod << std::endl;
-            }
+            std::cout <<"mod = " << mod << std::endl;
         }
+    }
 }
 
 } // namespace hcp

@@ -1,3 +1,6 @@
 [submodule "external/argparse"]
 	path = external/argparse
 	url = https://github.com/hicops/argparse
+[submodule "external/magic_enum"]
+	path = external/magic_enum
+	url = https://github.com/hicops/magic_enum

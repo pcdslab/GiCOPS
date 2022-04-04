@@ -16,3 +16,5 @@ add_subdirectory(gicops)
 message(STATUS "Adding test app...")
 add_subdirectory(testapp)
 
+message(STATUS "Adding argp app...")
+add_subdirectory(argp)

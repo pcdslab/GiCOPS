@@ -61,7 +61,7 @@ endif()
 ##########################################################################################
 set(CXX_STANDARD_REQUIRED ON)
 
-# required minimum CXX standard to use with argparse library. Else CXX_STANDARD=14 is fine.
+# required minimum CXX standard
 set(CMAKE_CXX_STANDARD_REQUIRED 17)
 
 if(NOT CXX_STANDARD OR (CXX_STANDARD LESS ${CMAKE_CXX_STANDARD_REQUIRED}))

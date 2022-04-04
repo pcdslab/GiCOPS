@@ -13,10 +13,11 @@ set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/gicops.cpp PROPERTIES LANG
 add_executable(gicops ${_EXCLUDE}
     ${CMAKE_CURRENT_LIST_DIR}/gicops.cpp)
 
-add_dependencies(gicops argparse)
+add_dependencies(gicops magic_enum argparse)
 
 # include core/include and generated files
-target_include_directories(gicops PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../../core/include ${CMAKE_BINARY_DIR} ${ARGPARSE_INCLUDE_DIR})
+# NOT include ${MAGICENUM_INCLUDE_DIR} as it results in internal error due to CUDA
+target_include_directories(gicops PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../../core/include ${CMAKE_CURRENT_LIST_DIR}/../argp ${CMAKE_BINARY_DIR} ${ARGPARSE_INCLUDE_DIR})
 
 # link appropriate libraries
 target_link_libraries(gicops hicops-core ${MPI_LIBRARIES})

@@ -76,7 +76,7 @@ BOOL LBE_ApplyPolicy(Index *index,  BOOL pepmod, uint_t key)
 {
     BOOL value = false;
 
-    DistPolicy policy = params.policy;
+    DistPolicy_t policy = params.policy;
 
     uint_t csize = index->lclmodCnt;
 
@@ -85,13 +85,13 @@ BOOL LBE_ApplyPolicy(Index *index,  BOOL pepmod, uint_t key)
         csize = index->lclpepCnt;
     }
 
-    if (policy == _chunk)
-    {
-        value = (key / csize) == (params.myid);
-    }
-    else if (policy == _cyclic)
+    if (policy == cyclic)
     {
         value = key % (params.nodes) == params.myid;
+    }
+    else if (policy == chunk)
+    {
+        value = (key / csize) == (params.myid);
     }
     else
     {

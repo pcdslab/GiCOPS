@@ -142,10 +142,23 @@ ENDFUNCTION()
 
 checkout_git_submodule(
     RECURSIVE
+    RELATIVE_PATH external/magic_enum
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    REPO_URL https://github.com/hicops/magic_enum.git
+    REPO_BRANCH master)
+
+checkout_git_submodule(
+    RECURSIVE
     RELATIVE_PATH external/argparse
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     REPO_URL https://github.com/hicops/argparse.git
     REPO_BRANCH master)
+
+message(STATUS "Adding external/magic_enum...")
+add_subdirectory(magic_enum)
+
+set(MAGICENUM_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/magic_enum/include 
+    CACHE PATH "magic_enum include directory")
 
 message(STATUS "Adding external/argparse...")
 add_subdirectory(argparse)

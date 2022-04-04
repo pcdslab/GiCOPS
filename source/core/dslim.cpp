@@ -788,15 +788,15 @@ int_t DSLIM_GenerateIndex(Index *index, uint_t key)
 {
     int_t value = -1;
 
-    DistPolicy policy = params.policy;
+    DistPolicy_t policy = params.policy;
 
     uint_t csize = index->lclpepCnt;
 
-    if (policy == _chunk)
-        value = (params.myid * csize) + key;
-    else if (policy == _cyclic)
+    if (policy == cyclic)
         value = (key * params.nodes) + params.myid;
-    else if (policy == _zigzag)
+    else if (policy == chunk)
+        value = (params.myid * csize) + key;
+    else if (policy == zigzag)
         value = -1;
 
     return value;

@@ -18,6 +18,7 @@
  */
 
 #include "hicops.hpp"
+#include "argp.hpp"
 
 using namespace std;
 
@@ -29,8 +30,6 @@ vector<string_t> queryfiles;
 string_t dbfile;
 
 gParams params;
-
-static status_t ParseParams(char_t* paramfile);
 
 /* FUNCTION: main
  *
@@ -136,7 +135,7 @@ status_t main(int_t argc, char_t* argv[])
 
     // parse parameters
     if (status == SLM_SUCCESS)
-        status = ParseParams(argv[1]);
+        hcp::apps::argp::parseAndgetParams(argc, argv, params);
 
     // Print HiCOPS header after the ranks have been assigned
     if (params.myid == 0)
@@ -481,210 +480,5 @@ status_t main(int_t argc, char_t* argv[])
 #endif // USE_MPI
 
     /* Return the status of execution */
-    return status;
-}
-
-/* FUNCTION: ParseParams
- *
- * DESCRIPTION: Parse the input params and initialize
- *
- * INPUT: none
- *
- * OUTPUT
- * @status: Status of execution
- */
-static status_t ParseParams(char_t* paramfile)
-{
-    status_t status = SLM_SUCCESS;
-
-    string_t line;
-
-    ifstream pfile(paramfile);
-
-    /* Check if mods file is open */
-    if (pfile.is_open())
-    {
-        /* Get path to DBparts */
-        getline(pfile, line);
-
-        /* Check for a dangling / character */
-        if (line.at(line.length()- 1) == '/')
-            line = line.substr(0, line.size() - 1);
-
-        params.dbpath = line;
-
-        /* Get path to MS2 data */
-        getline(pfile, line);
-
-        /* Check for a dangling / character */
-        if (line.at(line.length()- 1) == '/')
-            line = line.substr(0, line.size() - 1);
-
-        params.datapath = line;
-
-        /* Get path to workspace path */
-        getline(pfile, line);
-
-        /* Check for a dangling / character */
-        if (line.at(line.length()- 1) == '/')
-            line = line.substr(0, line.size() - 1);
-
-        params.workspace = line;
-
-        // Get the max threads to use 
-        getline(pfile, line);
-
-#ifdef USE_OMP
-        params.threads = std::atoi(line.c_str());
-#else
-        params.threads = 1;
-#endif /* USE_OMP */
-
-        // get the max preprocessing threads to use
-        getline(pfile, line);
-
-#ifdef USE_OMP
-        params.maxprepthds = std::atoi(line.c_str());
-#else
-        params.maxprepthds = 1;
-#endif /* USE_OMP */
-
-        /* Get the min peptide length */
-        getline(pfile, line);
-        params.min_len = std::atoi(line.c_str());
-
-        /* Get the max peptide length */
-        getline(pfile, line);
-        params.max_len = std::atoi(line.c_str());
-
-        /* Get the max fragment charge */
-        getline(pfile, line);
-        params.maxz = std::atoi(line.c_str());
-
-        /* Get the fragment mass tolerance */
-        getline(pfile, line);
-        params.dF = (uint_t)(std::atof(line.c_str()) * params.scale);
-
-        //params.dF = std::max(0, static_cast<int>(params.dF - 1));
-
-        /* Get the precursor mass tolerance */
-        getline(pfile, line);
-        params.dM = std::atof(line.c_str());
-
-        /* Get the m/z axis resolution */
-        getline(pfile, line);
-        params.res = std::atof(line.c_str());
-
-        /* Get the scaling factor */
-        getline(pfile, line);
-        params.scale = std::atoi(line.c_str());
-
-        /* Get the min mass */
-        getline(pfile, line);
-        params.min_mass = std::atoi(line.c_str());
-
-        /* Get the max mass */
-        getline(pfile, line);
-        params.max_mass = std::atoi(line.c_str());
-
-        /* Get the top matches to report */
-        getline(pfile, line);
-        params.topmatches = std::atoi(line.c_str());
-
-        /* Get the max expect score to report */
-        getline(pfile, line);
-        params.expect_max = std::atof(line.c_str());
-
-        /* Get the shp threshold */
-        getline(pfile, line);
-        params.min_shp = std::atoi(line.c_str());
-
-        /* Get the minhits threshold */
-        getline(pfile, line);
-        params.min_cpsm = std::atoi(line.c_str());
-
-        /* Base Intensity x 1000 */
-        getline(pfile, line);
-        params.base_int = std::atoi(line.c_str()) * 1000;
-
-        /* Cutoff intensity ratio */
-        getline(pfile, line);
-        params.min_int = (int_t)(std::atof(line.c_str()) * (double_t)(params.base_int));
-
-        /* Get the scorecard + scratch memory */
-        getline(pfile, line);
-        params.spadmem = std::atoi(line.c_str());
-
-        params.spadmem *= 1024 * 1024; // Convert to MBs (max scratch space for score card)
-
-        /* Get the distribution policy */
-        getline(pfile, line);
-
-        if (!line.compare("cyclic"))
-            params.policy = _cyclic;
-        else if (!line.compare("chunk"))
-            params.policy = _chunk;
-        
-        else if (!line.compare("zigzag"))
-            params.policy = _zigzag;
-
-        /* Get number of mods */
-        getline(pfile, line);
-        params.vModInfo.num_vars = std::atoi((const char_t *) line.c_str());
-
-        /* If no mods then init to 0 M 0 */
-        if (params.vModInfo.num_vars == 0)
-        {
-            params.modconditions = "0 M 0";
-        }
-        else
-        {
-            /* Get max vmods per peptide sequence */
-            getline(pfile, line);
-            params.vModInfo.vmods_per_pep = std::atoi((const char_t *) line.c_str());
-            params.modconditions = std::to_string(params.vModInfo.vmods_per_pep);
-
-            /* Fill in information for each vmod */
-            for (ushort_t md = 0; md < params.vModInfo.num_vars; md++)
-            {
-                /* Get and set the modAAs */
-                getline(pfile, line);
-
-                /* Convert to all uppercases if not already */
-                std::transform(line.begin(), line.end(), line.begin(), ::toupper);
-
-                params.modconditions += " " + line;
-
-                std::strncpy((char *) params.vModInfo.vmods[md].residues, (const char *) line.c_str(),
-                        std::min(4, static_cast<int>(line.length())));
-
-                /* get and set the modmass */
-                getline(pfile, line);
-                params.vModInfo.vmods[md].modMass = (uint_t) (std::atof((const char *) line.c_str()) * params.scale);
-
-                /* Get and set the modAAs_per_peptide */
-                getline(pfile, line);
-                params.modconditions += " " + line;
-
-                params.vModInfo.vmods[md].aa_per_peptide = std::atoi((const char *) line.c_str());
-            }
-        }
-
-#ifdef USE_MPI
-        status = MPI_Comm_rank(MPI_COMM_WORLD, (int_t *)&params.myid);
-        status = MPI_Comm_size(MPI_COMM_WORLD, (int_t *)&params.nodes);
-#else
-        params.myid = 0;
-        params.nodes = 1;
-
-#endif /* USE_MPI */
-
-        pfile.close();
-    }
-    else
-    {
-        status = ERR_FILE_NOT_FOUND;
-    }
-
     return status;
 }

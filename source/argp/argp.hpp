@@ -276,7 +276,7 @@ void getParams(gParams &params)
             params.modconditions = std::to_string(params.vModInfo.vmods_per_pep);
 
             // process the strings: AA:MASS.0:NUM 
-            for (auto md = 0; md < params.vModInfo.vmods_per_pep; md++)
+            for (auto md = 0; md < params.vModInfo.num_vars; md++)
             {
                 // for each mod string
                 auto &mod = modslist[md];

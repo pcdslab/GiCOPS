@@ -49,7 +49,7 @@ status_t main(int_t argc, char_t* argv[])
     const char_t extension[] = ".peps";
 
     /* Benchmarking */
-    double_t elapsed_seconds;
+    double_t elapsed_seconds = 0;
 
 #if defined (USE_TIMEMORY)
     // reset any previous configuration
@@ -71,15 +71,8 @@ status_t main(int_t argc, char_t* argv[])
 
     // configure the bundle
     tim::configure<bundle_t>(env_enum);
-#endif
 
-    if (argc < 2)
-    {
-        std::cout << "ABORT: Missing parameters\n";
-        std::cout << "Format: mpirun -np <k> hicops <uparams.txt>\n";
-        status = ERR_INVLD_PARAM;
-        exit (status);
-    }
+#endif // USE_TIMEMORY
 
 #ifdef USE_MPI
 #   if defined (USE_TIMEMORY)
@@ -153,6 +146,7 @@ status_t main(int_t argc, char_t* argv[])
         while ((pdir = readdir(dir)) != NULL)
         {
             string_t cfile(pdir->d_name);
+            cfile = cfile.substr(cfile.find_last_of("."));
 
             /* Add the matching files */
             if (cfile.find(patt) != std::string::npos)
@@ -162,7 +156,10 @@ status_t main(int_t argc, char_t* argv[])
 
     /* No file to query - Abort */
     if (queryfiles.size() < 1)
+    {
+        std::cerr << std::endl << "FATAL: No data files in: " << params.datapath << std::endl;
         status = ERR_FILE_NOT_FOUND;
+    }
 
     /* Create local variables to avoid trouble */
     uint_t minlen = params.min_len;
@@ -208,7 +205,7 @@ status_t main(int_t argc, char_t* argv[])
         MARK_START(lbe_cnt);
 
         // Count the number of ">" entries in FASTA
-        status = LBE_CountPeps((char_t *) dbfile.c_str(), (slm_index + peplen-minlen), peplen);
+        status = LBE_CountPeps(dbfile, (slm_index + peplen-minlen), peplen);
 
         MARK_END(lbe_cnt);
 
@@ -300,7 +297,7 @@ status_t main(int_t argc, char_t* argv[])
         }
     }
 
-        /* We don't need the original data anymore */
+    // we don't need the allocated memory anymore
     if (status == SLM_SUCCESS)
         status = DSLIM_DeallocateSpecArr();
 

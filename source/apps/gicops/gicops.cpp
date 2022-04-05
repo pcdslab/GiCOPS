@@ -78,14 +78,6 @@ status_t main(int_t argc, char_t* argv[])
 
 #endif // USE_TIMEMORY
 
-    if (argc < 2)
-    {
-        std::cout << "ABORT: Missing parameters\n";
-        std::cout << "Format: gicops <uparams.txt>\n";
-        status = ERR_INVLD_PARAM;
-        exit (status);
-    }
-
     // --------------------------------------------------------------------------------------------- //
     //
     // Initialization
@@ -123,7 +115,7 @@ status_t main(int_t argc, char_t* argv[])
         {
             string_t cfile(pdir->d_name);
             cfile = cfile.substr(cfile.find_last_of("."));
-            
+
             /* Add the matching files */
             if (cfile.find(patt) != std::string::npos)
                 queryfiles.push_back(params.datapath + '/' + pdir->d_name);
@@ -132,7 +124,10 @@ status_t main(int_t argc, char_t* argv[])
 
     /* No file to query - Abort */
     if (queryfiles.size() < 1)
+    {
+        std::cerr << std::endl << "FATAL: No data files in: " << params.datapath << std::endl;
         status = ERR_FILE_NOT_FOUND;
+    }
 
     /* Create local variables to avoid trouble */
     uint_t minlen = params.min_len;
@@ -151,9 +146,7 @@ status_t main(int_t argc, char_t* argv[])
 
     // Initialize the mod information
     if (status == SLM_SUCCESS)
-    {
         status = UTILS_InitializeModInfo(&params.vModInfo);
-    }
 
     // Initialize the ModGen Engine
     if (status == SLM_SUCCESS)
@@ -180,7 +173,7 @@ status_t main(int_t argc, char_t* argv[])
         MARK_START(lbe_cnt);
 
         // Count the number of ">" entries in FASTA
-        status = LBE_CountPeps((char_t *) dbfile.c_str(), (slm_index + peplen-minlen), peplen);
+        status = LBE_CountPeps(dbfile, (slm_index + peplen-minlen), peplen);
 
         MARK_END(lbe_cnt);
 
@@ -404,9 +397,14 @@ status_t main(int_t argc, char_t* argv[])
     if (params.myid == 0)
     {
         std::cout << std::endl << "End Time: " << ctime(&end_time) << std::endl;
+#if defined (USE_TIMEMORY)
 
+    total.stop();
+    auto tt = total.get<wall_clock>();
+    auto es = tt->get();
+#else
         auto es = ELAPSED_SECONDS(start_tim);
-
+#endif // USE_TIMEMORY
         std::cout << "Total Elapsed Time: " << es << "s" << std::endl;
 
         /* Print final program status */

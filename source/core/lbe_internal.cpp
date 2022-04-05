@@ -393,7 +393,7 @@ status_t LBE_CreatePartitions(Index *index)
  * OUTPUT:
  * @status: Status of execution
  */
-status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
+status_t LBE_CountPeps(string &filename, Index *index, uint_t explen)
 {
     status_t status = SLM_SUCCESS;
     string_t line;
@@ -455,7 +455,7 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
     }
     else
     {
-        std::cout << std::endl << "FATAL: Could not read FASTA file" << std::endl;
+        std::cerr << std::endl << "FATAL: Could not read DB file: " << filename << std::endl;
         status = ERR_INVLD_PARAM;
     }
 

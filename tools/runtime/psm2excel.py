@@ -23,6 +23,7 @@
 import os
 import sys
 import glob
+import time
 import argparse
 import pandas as pd
 
@@ -50,7 +51,9 @@ if __name__ == '__main__':
     if args.ofile is not None:
         output = args.ofile.lstrip(' ')
     else:
-        output = data_dir + '/Results.xlsx'
+        t = time.localtime()
+        current_time = time.strftime("%H.%M.%S", t)
+        output = data_dir + '/results.' + current_time + '.xlsx'
 
     # Open the TSV files
     data_dir = os.path.expanduser(data_dir)

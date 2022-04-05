@@ -84,8 +84,9 @@ status_t synchronize()
 {
     status_t status = SLM_SUCCESS;
 
-    // synchronize
-    status = hcp::mpi::barrier();
+    // barrier only if more than 1 nodes
+    if (params.nodes > 1)
+        status = hcp::mpi::barrier();
 
     // write index to file
     MSQuery::write_index();
@@ -266,9 +267,8 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
             ms2local.clear();
         }
 
-        // synchronize
-        if (params.nodes > 1)
-            status = hcp::ms2::synchronize();
+        // synchronize & write index if needed
+        status = hcp::ms2::synchronize();
 
         // ------------------------------------------------------------ //
 

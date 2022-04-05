@@ -551,8 +551,7 @@ bool MSQuery::init_index()
         file.close();
 #endif // GNUC VERSION
 
-        // FIXME: revert to ret from false
-        return false; // ret;
+        return ret;
     };
 
     // check if file exists
@@ -584,7 +583,7 @@ bool MSQuery::init_index()
         // if unable to open fh
         if (!fh)
         {
-            std::cerr << "Error opening ofstream file: " << fname << std::endl;
+            std::cerr << "Error opening file: " << fname << std::endl;
             exit (-1);
         }
 

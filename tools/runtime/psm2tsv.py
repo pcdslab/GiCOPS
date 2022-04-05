@@ -52,7 +52,9 @@ if __name__ == '__main__':
     if args.ofile is not None:
         output = args.ofile.lstrip(' ')
     else:
-        output = data_dir + '/results.tsv'
+        t = time.localtime()
+        current_time = time.strftime("%H.%M.%S", t)
+        output = data_dir + '/results.' + current_time + '.tsv'
 
     # Open the TSV files
     data_dir = os.path.expanduser(data_dir)
@@ -72,13 +74,12 @@ if __name__ == '__main__':
     # Matrix where the df will be collected
     matrix = []
 
-    # Read all TSVs into data matrix
+    # Read all appropriate TSVs into the data matrix
     if (len(tsv_files) > 1):
         for kk in tsv_files:
             if kk.find('results') != -1:
-                t = time.localtime()
-                current_time = time.strftime("%H.%M.%S", t)
-                output = data_dir + '/results.' + current_time + '.tsv'
+                # do not read the results files
+                continue
             else:
                 print ('Loading File: ', kk)
                 dat = pd.read_csv(kk, sep='\t', index_col=None, header=0)

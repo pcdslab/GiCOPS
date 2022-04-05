@@ -16,7 +16,7 @@ add_executable(gicops ${_EXCLUDE}
 add_dependencies(gicops magic_enum argparse)
 
 # include core/include and generated files
-# NOT include ${MAGICENUM_INCLUDE_DIR} as it results in internal error due to CUDA
+# DO NOT include ${MAGICENUM_INCLUDE_DIR} as it results in an internal error at templates due to CUDA compiler.
 target_include_directories(gicops PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../../core/include ${CMAKE_CURRENT_LIST_DIR}/../argp ${CMAKE_BINARY_DIR} ${ARGPARSE_INCLUDE_DIR})
 
 # link appropriate libraries

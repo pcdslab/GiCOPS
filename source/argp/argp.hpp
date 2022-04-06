@@ -1,4 +1,21 @@
-
+/*
+ * Copyright (C) 2022 Muhammad Haseeb, Fahad Saeed
+ * Florida International University, Miami, FL
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
 
 #pragma once
 
@@ -190,7 +207,7 @@ void getParams(gParams &params)
     // COMPILER VERSION GCC 9.1.0+ required for std::filesystem calls
     std::filesystem::create_directory(parser.workspace);
 #else
-    mkdir(parser.workspace.c_str());
+    mkdir(parser.workspace.c_str(), 0777);
 #endif // __GNUC__ > 9
 
 #endif // !ARGP_ONLY
@@ -287,15 +304,15 @@ void getParams(gParams &params)
                 // replace colons with space
                 std::replace(mod.begin(), mod.end(), ':', ' ');
 
-                // append to the modconditions string
-                params.modconditions += " " + mod;
-
                 // tokenize the string
                 std::stringstream modtokens(mod);
                 string_t element;
 
                 // extract the AAs
                 modtokens >> element;
+
+                // append to the modconditions string
+                params.modconditions += " " + element;
 
                 // copy to vmods
                 std::strncpy((char *) params.vModInfo.vmods[md].residues, (const char *) element.c_str(),
@@ -310,6 +327,9 @@ void getParams(gParams &params)
                 // extract the NUM
                 modtokens >> element;
 
+                // append to the modconditions string
+                params.modconditions += " " + element;
+
                 // copy to vmods
                 params.vModInfo.vmods[md].aa_per_peptide = std::atoi((const char *) element.c_str());
 
@@ -321,7 +341,7 @@ void getParams(gParams &params)
             params.modconditions = "0";
         }
 
-#if defined(USE_MPI) && !defined(ARGP_ONLY)
+#if defined(USE_MPI) && !(defined(ARGP_NOMPI) || defined(ARGP_ONLY))
     MPI_Comm_rank(MPI_COMM_WORLD, (int_t *)&params.myid);
     MPI_Comm_size(MPI_COMM_WORLD, (int_t *)&params.nodes);
 #else

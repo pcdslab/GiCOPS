@@ -98,7 +98,7 @@
 // Not an Amino Acid (NAA)
 #define NAA                      -20000
 
-// data type to use for storing and retrivevign preprocessed spectra
+// data type to use for storing and retriving preprocessed spectra
 // valid options are: int (default) and float
 using spectype_t = int;
 

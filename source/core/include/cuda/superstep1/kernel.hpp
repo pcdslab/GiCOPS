@@ -39,7 +39,8 @@ namespace s1
 void initMods(SLM_vMods *vMods);
 
 // function to compute partial sums
-void exclusiveScan(uint_t *array, int size, int init = 0);
+template <typename T>
+void exclusiveScan(T *array, int size, T init = 0);
 
 // function to sort the peptide index
 void SortPeptideIndex(Index *index);

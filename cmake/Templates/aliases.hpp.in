@@ -19,6 +19,8 @@
 
 // CMake generated header file. Do not modify
 
+#pragma once
+
 // Set/Get the bit for modification site in a peptide 
 #define MODSITE(x)                       (1 << (x))
 

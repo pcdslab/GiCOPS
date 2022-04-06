@@ -21,71 +21,12 @@
 #include "utils.h"
 #include "slm_dsts.h"
 #include "cuda/superstep1/kernel.hpp"
+#include "aamasses.hpp"
 
 /* Global Mods Info  */
 SLM_vMods      gModInfo;
 
 extern gParams params;
-
-/* Amino Acids Masses */
-constexpr float_t AAMass[26] = {
-                    71.03712,   // A
-                    NAA,        // B
-                    103.00919,  // C
-                    115.030,    // D
-                    129.0426,   // E
-                    147.068,    // F
-                    57.02146,   // G
-                    137.060,    // H
-                    113.084,    // I
-                    NAA,        // J
-                    128.094,    // K
-                    113.084,    // L
-                    131.0405,   // M
-                    114.043,    // N
-                    NAA,        // O
-                    97.0527,    // P
-                    128.05858,  // Q
-                    156.1012,   // R
-                    87.032,     // S
-                    101.0476,   // T
-                    NAA,        // U
-                    99.06841,   // V
-                    186.0793,   // W
-                    NAA,        // X
-                    163.0633,   // Y
-                    NAA,        // Z
-                    };
-
-/* Static Mods for Amino Acids */
-constexpr float_t StatMods[26] = {
-                    0,        // A
-                    0,        // B
-                    57.021464,// C + 57.02
-                    0,        // D
-                    0,        // E
-                    0,        // F
-                    0,        // G
-                    0,        // H
-                    0,        // I
-                    0,        // J
-                    0,        // K
-                    0,        // L
-                    0,        // M
-                    0,        // N
-                    0,        // O
-                    0,        // P
-                    0,        // Q
-                    0,        // R
-                    0,        // S
-                    0,        // T
-                    0,        // U
-                    0,        // V
-                    0,        // W
-                    0,        // X
-                    0,        // Y
-                    0,        // Z
-                    };
 
 // Macro to extract AA masses
 #define GETAA(x,z)                 ((AAMass[AAidx(x)]) + (StatMods[AAidx(x)]) + ((PROTON) * (z)))

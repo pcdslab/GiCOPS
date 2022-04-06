@@ -33,9 +33,10 @@ pepEntry    *modEntries;
 map<AA, int_t> condLookup;
 vector<string_t> tokens;
 uint_t limit = 0;
-ull_t Comb[MAX_COMBS][MAX_COMBS];
 vector<int_t> condList;
 uint_t *varCount;
+
+static auto Comb = hcp::utils::Comb<hcp::utils::maxcombs>();
 
 /* External Variables */
 extern gParams params;
@@ -49,8 +50,6 @@ static VOID MODS_ModList(string_t peptide, vector<int_t> conditions,
                          int_t total, pepEntry container, int_t letter,
                          bool novel, int_t modsSeen, uint_t refid,
                          uint_t &global, uint_t &local);
-
-static VOID MODS_GenCombinations();
 
 /*
  * FUNCTION: MODS_Initialize
@@ -76,11 +75,8 @@ status_t MODS_Initialize()
 
     limit = stoi(tokens[0]);
 
-    /* Generate all possible combinations pre-handed */
-    (VOID) MODS_GenCombinations();
-
     /* Reset conditions for all letters */
-    for (int_t i = 0; i < 26; i++)
+    for (int_t i = 0; i < ALPHABETS; i++)
     {
         condLookup[allLetters[i]] = -1;
     }
@@ -118,57 +114,6 @@ int_t cmpvarEntries(const VOID* lhs, const void *rhs)
         return -1;
 
     return 0;
-}
-
-/*
- * FUNCTION: MODS_GenCombinations
- *
- * DESCRIPTION: Generates all nCk required
- *
- * INPUT: none
- *
- * OUTPUT: none
- */
-static VOID MODS_GenCombinations()
-{
-    //run this at start of main to fill Comb with the proper values
-    Comb[0][0] = 1;
-    Comb[1][0] = 1;
-    Comb[1][1] = 1;
-
-    for (int i = 1; i < MAX_COMBS; i++)
-    {
-        Comb[i][0] = 1;
-
-        for (int j = 1; j <= (i + 1) / 2; j++)
-        {
-            Comb[i][j] = Comb[i - 1][j - 1] + Comb[i - 1][j];
-        }
-
-        for (int j = i / 2; j < i; j++)
-        {
-            Comb[i][j] = Comb[i][i - j];
-        }
-
-        Comb[i][i] = 1;
-    }
-}
-
-/*
- * FUNCTION: combine
- *
- * DESCRIPTION: Generates nCk
- *
- * INPUT:
- * @n: n
- * @k: k
- *
- * OUTPUT:
- * @Comb: nCk
- */
-inline ull_t combine(int n, int k)
-{
-    return Comb[n][k];
 }
 
 /*
@@ -219,7 +164,7 @@ longlong_t partition2(vector<int_t> a, int_t b)
 
     for (int_t i = 0; i < a[0] + 1; i++)
     {
-        sum += combine(a[0], i) * partition2(a2, b - i);
+        sum += Comb[a[0]][i] * partition2(a2, b - i);
     }
 
     return sum;
@@ -416,7 +361,7 @@ ull_t MODS_ModCounter()
 #if 1 // defined(USE_OMP) && defined(USE_GPU)
 
         // compute prefix scan on GPU
-        hcp::gpu::cuda::s1::exclusiveScan(varCount, Seqs.size() + 1, 0);
+        hcp::gpu::cuda::s1::exclusiveScan<uint_t>(varCount, Seqs.size() + 1, 0);
 #else
         // compute on CPU
         uint_t count = varCount[0];
@@ -432,7 +377,7 @@ ull_t MODS_ModCounter()
 
 #endif // USE_OMP && USE_GPU
 
-        // assert only works in build mode
+        // assert only works in debug mode
 
         // if (varCount[Seqs.size()] != cumulative) 
         //    std::cerr << "FATAL: varCount[Seqs.size()] != cumulative for peplen: " << Seqs[0].size() << std::endl;

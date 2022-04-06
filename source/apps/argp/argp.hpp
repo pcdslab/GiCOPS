@@ -304,15 +304,15 @@ void getParams(gParams &params)
                 // replace colons with space
                 std::replace(mod.begin(), mod.end(), ':', ' ');
 
-                // append to the modconditions string
-                params.modconditions += " " + mod;
-
                 // tokenize the string
                 std::stringstream modtokens(mod);
                 string_t element;
 
                 // extract the AAs
                 modtokens >> element;
+
+                // append to the modconditions string
+                params.modconditions += " " + element;
 
                 // copy to vmods
                 std::strncpy((char *) params.vModInfo.vmods[md].residues, (const char *) element.c_str(),
@@ -326,6 +326,9 @@ void getParams(gParams &params)
 
                 // extract the NUM
                 modtokens >> element;
+
+                // append to the modconditions string
+                params.modconditions += " " + element;
 
                 // copy to vmods
                 params.vModInfo.vmods[md].aa_per_peptide = std::atoi((const char *) element.c_str());

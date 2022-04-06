@@ -70,7 +70,8 @@ __device__ int log2ceil(unsigned long long x);
 __global__ void GenerateFragIonData(uint_t *, pepEntry *, char *, short, int, short, short, float_t, float_t);
 
 // sort pepEntries sub-kernel
-__host__ void SortpepEntries(Index *, float_t *);
+template <typename T>
+__host__ void SortpepEntries(Index *, T *);
 
 // compute bA from the sorted fragment-ion data
 __host__ void ConstructbA(Index *index, size_t iAsize, uint chunk_number);
@@ -81,13 +82,13 @@ __host__ void ConstructbA(Index *index, size_t iAsize, uint chunk_number);
 __host__ void initMods(SLM_vMods *vMods)
 {
     // amino acid masses
-    constexpr float_t AAMass[26] = {71.03712, NAA, 103.00919, 115.030, 129.0426, 147.068, 57.02146, 137.060, 113.084, NAA, 128.094, 113.084, 131.0405, 114.043, NAA, 97.0527, 128.05858, 156.1012, 87.032, 101.0476, NAA, 99.06841, 186.0793, NAA, 163.0633, NAA};
+    constexpr float_t AAMass[ALPHABETS] = {71.03712, NAA, 103.00919, 115.030, 129.0426, 147.068, 57.02146, 137.060, 113.084, NAA, 128.094, 113.084, 131.0405, 114.043, NAA, 97.0527, 128.05858, 156.1012, 87.032, 101.0476, NAA, 99.06841, 186.0793, NAA, 163.0633, NAA};
 
     // static mod masses
     constexpr float_t statMods[ALPHABETS] = {0, 0, 57.021464, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
     // variable mod masses
-    float_t vMass[26] = {0};
+    float_t vMass[ALPHABETS] = {0};
 
     int nMods = vMods->num_vars;
 
@@ -107,17 +108,18 @@ __host__ void initMods(SLM_vMods *vMods)
 
 // -------------------------------------------------------------------------------------------- //
 
-__host__ void exclusiveScan(uint_t *array, int size, int init)
+template <typename T>
+__host__ void exclusiveScan(T *array, int size, T init)
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
     // initialize a device vector
-    uint_t *d_array = nullptr;
+    T *d_array = nullptr;
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_array, size, driver->stream[0]));
 
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_array, array, size, driver->stream[0]));
 
-    //thrust::device_vector<uint_t> d_array(array, array + size);
+    //thrust::device_vector<T> d_array(array, array + size);
 
     // compute exclusive scan
     thrust::exclusive_scan(thrust::device.on(driver->get_stream()), d_array, d_array + size, d_array, init);
@@ -129,6 +131,10 @@ __host__ void exclusiveScan(uint_t *array, int size, int init)
     // free device memory
     hcp::gpu::cuda::device_free_async(d_array, driver->stream[0]);
 }
+
+// instantiate the template for int and uint_t
+template __host__ void exclusiveScan<int>(int *array, int size, int init);
+template __host__ void exclusiveScan<uint_t>(uint_t *array, int size, uint_t init);
 
 // -------------------------------------------------------------------------------------------- //
 __host__ void SortPeptideIndex(Index *index)
@@ -159,18 +165,19 @@ __host__ void SortPeptideIndex(Index *index)
 // -------------------------------------------------------------------------------------------- //
 
 // sort peptide entries by mass on GPU
-void SortpepEntries(Index *index, float_t *h_mz)
+template <typename T>
+void SortpepEntries(Index *index, T *h_mz)
 {
     auto pepIndex = index->pepEntries;
     auto size = index->lcltotCnt;
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
     // initialize device vector with mzs
-    float_t *d_pepMZs = nullptr;
+    T *d_pepMZs = nullptr;
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_pepMZs, size, driver->stream[0]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_pepMZs, h_mz, size, driver->stream[0]));
     
-    //thrust::device_vector<float_t> d_pepMZs(h_mz, h_mz + size);
+    //thrust::device_vector<T> d_pepMZs(h_mz, h_mz + size);
 
     // initilize values to sequence
     int *d_indices = nullptr;

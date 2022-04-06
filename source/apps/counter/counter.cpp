@@ -19,14 +19,9 @@
 
 #include <algorithm>
 #include "counter.hpp"
+#include "aamasses.hpp"
 
 using namespace std;
-
-std::vector<string_t> Seqs;
-ull_t cumusize = 0;
-ull_t ions = 0;
-
-ifstream file;
 
 extern gParams params;
 
@@ -35,68 +30,7 @@ SLM_vMods      gModInfo;
 
 extern gParams params;
 
-/* Amino Acids Masses */
-constexpr float_t AAMass[26] = {
-                    71.03712,   // A
-                    NAA,        // B
-                    103.00919,  // C
-                    115.030,    // D
-                    129.0426,   // E
-                    147.068,    // F
-                    57.02146,   // G
-                    137.060,    // H
-                    113.084,    // I
-                    NAA,        // J
-                    128.094,    // K
-                    113.084,    // L
-                    131.0405,   // M
-                    114.043,    // N
-                    NAA,        // O
-                    97.0527,    // P
-                    128.05858,  // Q
-                    156.1012,   // R
-                    87.032,     // S
-                    101.0476,   // T
-                    NAA,        // U
-                    99.06841,   // V
-                    186.0793,   // W
-                    NAA,        // X
-                    163.0633,   // Y
-                    NAA,        // Z
-                    };
-
-/* Static Mods for Amino Acids */
-constexpr float_t StatMods[26] = {
-                    0,        // A
-                    0,        // B
-                    57.021464,// C + 57.02
-                    0,        // D
-                    0,        // E
-                    0,        // F
-                    0,        // G
-                    0,        // H
-                    0,        // I
-                    0,        // J
-                    0,        // K
-                    0,        // L
-                    0,        // M
-                    0,        // N
-                    0,        // O
-                    0,        // P
-                    0,        // Q
-                    0,        // R
-                    0,        // S
-                    0,        // T
-                    0,        // U
-                    0,        // V
-                    0,        // W
-                    0,        // X
-                    0,        // Y
-                    0,        // Z
-                    };
-
-
-status_t DBCounter(char_t *filename)
+std::array<ull_t, 2> DBCounter(string &filename)
 {
     status_t status = SLM_SUCCESS;
     string_t line;
@@ -104,15 +38,14 @@ status_t DBCounter(char_t *filename)
     string_t modconditions = params.modconditions;
     uint_t maxmass= params.max_mass;
     uint_t minmass= params.min_mass;
+    ull_t ions = 0;
+
+    std::vector<string_t> Seqs;
 
     ull_t localpeps = 0;
 
-#ifndef VMODS
-    UNUSED_PARAM(modconditions);
-#endif /* VMODS */
-
-    /* Open file */
-    file.open(filename);
+    // open file
+    std::ifstream file(filename);
 
     if (file.is_open())
     {
@@ -130,7 +63,7 @@ status_t DBCounter(char_t *filename)
                 std::transform(line.begin(), line.end(), line.begin(), ::toupper);
 
                 /* Calculate mass of peptide */
-                pepmass = UTILS_CalculatePepMass((AA *)line.c_str(), line.length());
+                pepmass = CalculatePepMass((AA *)line.c_str(), line.length());
 
                 /* Check if the peptide mass is legal */
                 if (pepmass >= minmass && pepmass <= maxmass)
@@ -140,6 +73,9 @@ status_t DBCounter(char_t *filename)
                 }
             }
         }
+
+        /* Close the file once done */
+        file.close();
     }
     else
     {
@@ -147,39 +83,24 @@ status_t DBCounter(char_t *filename)
         status = ERR_INVLD_PARAM;
     }
 
-#ifdef VMODS
     /* Count the number of variable mods given
      * modification information */
     if (status == SLM_SUCCESS)
     {
-        status = UTILS_InitializeModInfo(&params.vModInfo);
-
-        localpeps += MODS_ModCounter();
-
+        localpeps += ModCounter(Seqs);
     }
 
-#endif /* VMODS */
-
-    /* Print if everything is okay */
-    if (status == SLM_SUCCESS)
-    {
-        /* Close the file once done */
-        file.close();
-    }
-
-
-    cumusize += localpeps;
     ions += (localpeps * ((Seqs.at(0).length() - 1) * params.maxz * iSERIES));
 
     Seqs.clear();
 
-    return status;
+    return std::array<ull_t, 2>{localpeps, ions};
 }
 
 /*
  * FUNCTION: UTILS_CalculatePepMass
  */
-float_t UTILS_CalculatePepMass(AA *seq, uint_t len)
+float_t CalculatePepMass(AA *seq, uint_t len)
 {
     /* Initialize mass to H2O */
     float_t mass = H2O;
@@ -195,20 +116,14 @@ float_t UTILS_CalculatePepMass(AA *seq, uint_t len)
 }
 
 /*
- * FUNCTION: UTILS_InitializeModInfo
+ * FUNCTION: InitializeModInfo
  */
-status_t UTILS_InitializeModInfo(SLM_vMods *vMods)
-{
-    status_t status = SLM_SUCCESS;
+void InitializeModInfo(SLM_vMods *vMods) { gModInfo = *vMods; }
 
-    gModInfo = *vMods;
-
-    return status;
-}
 /*
- * FUNCTION: UTILS_CalculateModMass
+ * FUNCTION: CalculateModMass
  */
-float_t UTILS_CalculateModMass(AA *seq, uint_t len, uint_t vModInfo)
+float_t CalculateModMass(AA *seq, uint_t len, uint_t vModInfo)
 {
     /* Initialize mass to H2O */
     float_t mass = H2O;

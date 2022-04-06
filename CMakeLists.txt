@@ -189,8 +189,11 @@ configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/aliases.hpp.in aliases.hpp 
 # configure the file: common.hpp
 configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/common.hpp.in common.hpp @ONLY)
 
+# configure the file: aamasses.hpp
+configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/aamasses.hpp.in aamasses.hpp @ONLY)
+
 # install the configured file as well
-install(FILES ${CMAKE_BINARY_DIR}/config.hpp ${CMAKE_BINARY_DIR}/aliases.hpp ${CMAKE_BINARY_DIR}/common.hpp DESTINATION include)
+install(FILES ${CMAKE_BINARY_DIR}/config.hpp ${CMAKE_BINARY_DIR}/aliases.hpp ${CMAKE_BINARY_DIR}/common.hpp ${CMAKE_BINARY_DIR}/aamasses.hpp DESTINATION include)
 
 ##########################################################################################
 #       Add sub-directories

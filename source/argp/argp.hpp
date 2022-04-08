@@ -170,7 +170,7 @@ struct params_t : public argparse::Args
     // LBE distribution policy
 
     // DistPolicy_t requires magic_enum submodule. 
-    DistPolicy_t &lbe_policy             = kwarg("policy", "LBE Distribution policy (chunk, cyclic, zigzag)").set_default(DistPolicy_t::cyclic);
+    DistPolicy_t &lbe_policy             = kwarg("policy", "LBE Distribution policy (cyclic, chunk, zigzag)").set_default(DistPolicy_t::cyclic);
 
     // scratch pad memory in MB
     int &bufferMBs                       = kwarg("buff,spad_mem", "buffer (scratch pad) RAM memory in MB (recommended: 2048MB+)").set_default(2048);

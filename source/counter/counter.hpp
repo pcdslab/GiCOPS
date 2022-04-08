@@ -20,16 +20,17 @@
 #pragma once 
 
 #include <vector>
+#include <array>
 #include "common.hpp"
 #include "slm_dsts.h"
 #include "utils.h"
 
-#define UNUSED_PARAM(x)              (void)(x)
+std::array<ull_t, 2> DBCounter(string_t &filename);
 
-status_t DBCounter(string_t &filename);
+float_t CalculatePepMass(AA *seq, uint_t len);
 
-float_t UTILS_CalculatePepMass(AA *seq, uint_t len);
+void InitializeModInfo(SLM_vMods *vMods);
 
-status_t UTILS_InitializeModInfo(SLM_vMods *vMods);
+float_t CalculateModMass(AA *seq, uint_t len, uint_t vModInfo);
 
-float_t UTILS_CalculateModMass(AA *seq, uint_t len, uint_t vModInfo);
+ull_t ModCounter(const std::vector<string_t> &Seqs);

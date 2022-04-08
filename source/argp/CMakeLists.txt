@@ -8,7 +8,7 @@ add_executable(argp ${_EXCLUDE}
 add_dependencies(argp magic_enum argparse)
 
 # include core/include and generated files
-target_include_directories(argp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../../core/include ${CMAKE_BINARY_DIR} ${MAGICENUM_INCLUDE_DIR} ${ARGPARSE_INCLUDE_DIR})
+target_include_directories(argp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../core/include ${CMAKE_BINARY_DIR} ${MAGICENUM_INCLUDE_DIR} ${ARGPARSE_INCLUDE_DIR})
 
 set_target_properties(argp
     PROPERTIES

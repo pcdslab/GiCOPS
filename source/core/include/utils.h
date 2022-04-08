@@ -130,6 +130,45 @@ struct lgfact {
     double val[N];
 };
 
+// max shared b- or y-ions
+const int maxcombs = 64;
+
+//
+// computes nCr at compile time
+//
+template<int N>
+struct Comb {
+    constexpr Comb() : val() {
+
+        //run this at start of main to fill Comb with the proper values
+        val[0][0] = 1;
+        val[1][0] = 1;
+        val[1][1] = 1;
+        for (int i = 1; i < N; i++)
+        {
+            val[i][0] = 1;
+            for (int j = 1; j <= (i + 1) / 2; j++)
+            {
+                val[i][j] = val[i - 1][j - 1] + val[i - 1][j];
+            }
+            for (int j = i / 2; j < i; j++)
+            {
+                val[i][j] = val[i][i - j];
+            }
+            val[i][i] = 1;
+        }
+    }
+
+    // needs to be const so it does not affect the val
+    ull_t ( & operator []( int x ) )[N]
+    {
+        return val[x];
+    }
+
+    // array to store results
+    ull_t val[N][N];
+};
+
 } // namespace utils
 } // namespace hcp
 

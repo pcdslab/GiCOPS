@@ -32,8 +32,8 @@
 /* Add distribution policies */
 typedef enum _DistPolicy
 {
-    chunk,
     cyclic,
+    chunk,
     zigzag,
 
 } DistPolicy_t;

@@ -85,13 +85,13 @@ BOOL LBE_ApplyPolicy(Index *index,  BOOL pepmod, uint_t key)
         csize = index->lclpepCnt;
     }
 
-    if (policy == chunk)
-    {
-        value = (key / csize) == (params.myid);
-    }
-    else if (policy == cyclic)
+    if (policy == cyclic)
     {
         value = key % (params.nodes) == params.myid;
+    }
+    else if (policy == chunk)
+    {
+        value = (key / csize) == (params.myid);
     }
     else
     {

@@ -60,11 +60,13 @@ endif()
 #       CXX standard
 ##########################################################################################
 set(CXX_STANDARD_REQUIRED ON)
-set(HiCOPS_CXX_STANDARD 17)
 
-if(NOT CMAKE_CXX_STANDARD OR (CMAKE_CXX_STANDARD LESS ${HiCOPS_CXX_STANDARD}))
-    set(CMAKE_CXX_STANDARD ${HiCOPS_CXX_STANDARD})
-    message(STATUS "Setting CXX_STANDARD to ${HiCOPS_CXX_STANDARD}")
+# required minimum CXX standard
+set(CMAKE_CXX_STANDARD_REQUIRED 17)
+
+if(NOT CXX_STANDARD OR (CXX_STANDARD LESS ${CMAKE_CXX_STANDARD_REQUIRED}))
+    set(CXX_STANDARD ${CMAKE_CXX_STANDARD_REQUIRED})
+    message(STATUS "Setting CXX_STANDARD to ${CMAKE_CXX_STANDARD_REQUIRED}")
 endif()
 
 
@@ -182,8 +184,11 @@ configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/config.hpp.in config.hpp @O
 # configure the file
 configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/common.hpp.in common.hpp @ONLY)
 
+# configure the file: aamasses.hpp
+configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/aamasses.hpp.in aamasses.hpp @ONLY)
+
 # install the configured file as well
-install(FILES ${CMAKE_BINARY_DIR}/config.hpp ${CMAKE_BINARY_DIR}/common.hpp DESTINATION include)
+install(FILES ${CMAKE_BINARY_DIR}/config.hpp ${CMAKE_BINARY_DIR}/common.hpp ${CMAKE_BINARY_DIR}/aamasses.hpp DESTINATION include)
 
 ##########################################################################################
 #       Add sub-directories

@@ -771,10 +771,10 @@ int_t DSLIM_GenerateIndex(Index *index, uint_t key)
 
     uint_t csize = index->lclpepCnt;
 
-    if (policy == chunk)
-        value = (params.myid * csize) + key;
-    else if (policy == cyclic)
+    if (policy == cyclic)
         value = (key * params.nodes) + params.myid;
+    else if (policy == chunk)
+        value = (params.myid * csize) + key;
     else if (policy == zigzag)
         value = false;
 

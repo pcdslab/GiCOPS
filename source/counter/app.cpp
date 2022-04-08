@@ -18,25 +18,17 @@
  */
 
 #include "counter.hpp"
-
-#define ARGP_ONLY
+#define ARGP_NOMPI
 #include "argp.hpp"
-#undef ARGP_ONLY
-
+#undef ARGP_NOMPI
 
 using namespace std;
 
-/* Global Variables */
-string_t dbfile;
-
-extern ull_t cumusize;
-extern ull_t ions;
-
 gParams params;
 
-/* FUNCTION: SLM_Main (main)
+/* FUNCTION: main
  *
- * DESCRIPTION: Driver Application
+ * DESCRIPTION: Counter application
  *
  * INPUT: none
  *
@@ -47,26 +39,43 @@ status_t main(int_t argc, char_t* argv[])
 {
     status_t status = SLM_SUCCESS;
 
+    ull_t cumusize = 0;
+    ull_t ions = 0;
+
     char_t extension[] = ".peps";
 
     /* Parse the parameters */
     hcp::apps::argp::parseAndgetParams(argc, argv, params);
 
-    /* Create local variables to avoid trouble */
-    uint_t minlen = params.min_len;
-    uint_t maxlen = params.max_len;
+    // initialize mod information here only once
+    InitializeModInfo(&params.vModInfo);
 
-    for (uint_t peplen = minlen; peplen <= maxlen && status == SLM_SUCCESS; peplen++)
+    /* Create local variables to avoid trouble */
+    int minlen = params.min_len;
+    int maxlen = params.max_len;
+
+    // compute max parallel threads
+    int maxthreads = std::max(static_cast<int>(std::thread::hardware_concurrency()), (maxlen-minlen+1));
+    int threads = std::max(2, static_cast<int>(std::ceil(static_cast<double>(maxthreads)/params.threads)));
+
+    // cannot use multiple threads as modcounter.cpp has global vars.
+#if defined(USE_OMP)
+//#pragma omp parallel for num_threads(threads) schedule(dynamic) reduction(+:cumusize,ions)
+#endif // defined(USE_OMP)
+    for (int peplen = minlen; peplen <= maxlen; peplen++)
     {
-        dbfile = params.dbpath + "/" + std::to_string(peplen) + extension;
+        string_t dbfile = params.dbpath + "/" + std::to_string(peplen) + extension;
 
         /* Count the number of ">" entries in FASTA */
-        status = DBCounter(dbfile);
+        auto&& ret = DBCounter(dbfile);
+
+        cumusize += std::get<0>(ret);
+        ions += std::get<1>(ret);
     }
 
     /* The only output should be the cumulative size of the index */
     std::cout << "spectra:" << cumusize << std::endl;
-    std::cout << "ions:" << ions << std::endl;
+	std::cout << "ions:" << ions << std::endl;
 
     return status;
 }

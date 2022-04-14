@@ -1,5 +1,5 @@
 
-project(hicops-core LANGUAGES C CXX CUDA)
+project(hicops-core LANGUAGES C CXX)
 
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
@@ -7,7 +7,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 
-enable_language(CUDA)
+if (USE_GPU)
+    enable_language(CUDA)
+endif()
 
 include_directories(BEFORE ${CMAKE_CURRENT_LIST_DIR}/include)
 
@@ -21,7 +23,10 @@ file(GLOB c_headers                 ${CMAKE_CURRENT_LIST_DIR}/include/*.h)
 file(GLOB cxx_headers               ${CMAKE_CURRENT_LIST_DIR}/include/*.hpp )
 file(GLOB c_sources                 ${CMAKE_CURRENT_LIST_DIR}/*.c)
 file(GLOB cxx_sources               ${CMAKE_CURRENT_LIST_DIR}/*.cpp)
-file(GLOB cuda_sources              ${CMAKE_CURRENT_LIST_DIR}/*/*/*.cu)
+
+if (USE_GPU)
+    file(GLOB cuda_sources              ${CMAKE_CURRENT_LIST_DIR}/*/*/*.cu)
+endif()
 
 # all the headers
 set(hicops_glob_headers

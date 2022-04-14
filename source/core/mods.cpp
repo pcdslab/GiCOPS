@@ -358,24 +358,27 @@ ull_t MODS_ModCounter()
 
         // compute prefix sum
 
-#if 1 // defined(USE_OMP) && defined(USE_GPU)
-
-        // compute prefix scan on GPU
-        hcp::gpu::cuda::s1::exclusiveScan<uint_t>(varCount, Seqs.size() + 1, 0);
-#else
-        // compute on CPU
-        uint_t count = varCount[0];
-        varCount[0] = 0;
-
-        // compute partial sums
-        for (uint_t ii = 1; ii <= Seqs.size(); ii++)
+#if defined(USE_GPU)
+        if (params.useGPU)
         {
-            uint_t tmpcount = varCount[ii];
-            varCount[ii] = varCount[ii - 1] + count;
-            count = tmpcount;
+            // compute prefix scan on GPU
+            hcp::gpu::cuda::s1::exclusiveScan<uint_t>(varCount, Seqs.size() + 1, 0);
         }
+        else
+#endif // defined(USE_GPU)
+        {
+            // compute on CPU
+            uint_t count = varCount[0];
+            varCount[0] = 0;
 
-#endif // USE_OMP && USE_GPU
+            // compute partial sums
+            for (uint_t ii = 1; ii <= Seqs.size(); ii++)
+            {
+                uint_t tmpcount = varCount[ii];
+                varCount[ii] = varCount[ii - 1] + count;
+                count = tmpcount;
+            }
+        }
 
         // assert only works in debug mode
 

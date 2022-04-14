@@ -82,6 +82,9 @@ __pycache__
 *.map
 *.pyc
 
+# preprocessed data files
+*.pbin
+
 # Autogen
 workspace*/
 data*

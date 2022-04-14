@@ -247,12 +247,13 @@ status_t UTILS_InitializeModInfo(SLM_vMods *vMods)
     // initialize mod info on CPU
     gModInfo = *vMods;
 
-#if 1 //defined (GPU) && defined (CUDA)
+#if defined(USE_GPU)
 
+    if (params.useGPU)
         // init mods info on GPU as well
         hcp::gpu::cuda::s1::initMods(&params.vModInfo);
 
-#endif // GPU && CUDA
+#endif // defined(USE_GPU)
 
     return SLM_SUCCESS;
 }

@@ -23,6 +23,9 @@
 // use MPI based build
 #cmakedefine USE_MPI
 
+// enable GPU based build
+#cmakedefine USE_GPU
+
 // enable Timemory based instrumentation
 #cmakedefine USE_TIMEMORY
 
@@ -101,9 +104,6 @@
 // data type to use for storing and retriving preprocessed spectra
 // valid options are: int (default) and float
 using spectype_t = int;
-
-
-#define BINMS2                true
 
 #define ALPHABETS      26
 #define MAXZ           6

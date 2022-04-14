@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  */
+#include <dirent.h>
 #include "msquery.hpp"
 #include "cuda/superstep2/kernel.hpp"
 
@@ -63,7 +64,7 @@ MSQuery::~MSQuery()
         qfile = NULL;
     }
 
-    if (!BINMS2)
+    if (params.filetype == gParams::FileType_t::MS2)
         spectrum.deallocate();
 
     spectrum.SpectrumSize = 0;
@@ -282,7 +283,7 @@ std::array<int, 2> MSQuery::convertAndprepMS2bin(string *filename)
                 }
 
                 // integrize the values if spectype_t is int
-                if (TypeIsInt<spectype_t>::value)
+                if constexpr (std::is_same<int, spectype_t>::value)
                 {
                     mzs.push_back(std::move(std::atof(mz.c_str()) * params.scale));
                     intns.push_back(std::move(std::atof(intn.c_str()) * 1000));
@@ -425,7 +426,7 @@ status_t MSQuery::pickpeaks(std::vector<T> &mzs, std::vector<T> &intns, int &spe
 
 void MSQuery::flushBinaryFile(string *filename, spectype_t *m_mzs, spectype_t *m_intns, float *rtimes, float *prec_mz, int *z, int *lens, int count, bool close)
 {
-    static std::ofstream qbFile(*filename + ".bin", ios::binary);
+    static std::ofstream qbFile(*filename + ".pbin", ios::binary);
 
     if (qbFile.is_open())
     {
@@ -445,7 +446,7 @@ void MSQuery::flushBinaryFile(string *filename, spectype_t *m_mzs, spectype_t *m
         }
     }
     else
-        std::cerr << "Could not open file " << filename << ".bin" << std::endl;
+        std::cerr << "Could not open file " << filename << ".pbin" << std::endl;
 
     if (close)
     {
@@ -470,7 +471,7 @@ status_t MSQuery::initialize(string_t *filename, int_t fno)
     status_t status = SLM_SUCCESS;
 
     // FIXME condition at which it will depend
-    auto vals = (BINMS2)? convertAndprepMS2bin(filename): readMS2file(filename);
+    auto vals = (params.filetype == gParams::FileType_t::PBIN)? convertAndprepMS2bin(filename): readMS2file(filename);
 
     auto largestspec = vals[1];
     auto globalcount = vals[0];
@@ -490,12 +491,12 @@ status_t MSQuery::initialize(string_t *filename, int_t fno)
         info.maxslen = largestspec;
 
         // FIXME: Fix with proper conditions
-        if (!BINMS2)
+        if (params.filetype == gParams::FileType_t::MS2)
             // allocate memory for the largest spectrum in file
             spectrum.allocate(info.maxslen + 1);
         else
             // binary file
-            MS2file += ".bin";
+            MS2file += ".pbin";
 
         m_isinit = true;
     }
@@ -520,11 +521,11 @@ void MSQuery::vinitialize(string_t *filename, int_t fno)
     MS2file = *filename;
     qfileIndex = fno;
 
-    if (!BINMS2)
+    if (params.filetype == gParams::FileType_t::MS2)
         // allocate memory for the largest spectrum in file
         spectrum.allocate(info.maxslen + 1);
     else
-        MS2file += ".bin";
+        MS2file += ".pbin";
 
     m_isinit = true;
 }
@@ -532,7 +533,7 @@ void MSQuery::vinitialize(string_t *filename, int_t fno)
 //
 // initialize the binary MS2 file index if needed
 //
-bool MSQuery::init_index()
+bool MSQuery::init_index(const std::vector<string_t> &queryfiles)
 {
     bool summaryExists = false;
 
@@ -554,12 +555,55 @@ bool MSQuery::init_index()
         return ret;
     };
 
+    // function to verify PBIN files
+    auto verifypbinfiles = [&]()
+    {
+        // check for all .pbin files
+        auto dir = opendir(params.datapath.c_str());
+        dirent* pdir;
+        std::vector<string_t> pbinfiles;
+
+        // check if opened
+        if (dir != nullptr)
+        {
+            while ((pdir = readdir(dir)) != nullptr)
+            {
+                string_t cfile(pdir->d_name);
+                cfile = cfile.substr(cfile.find_last_of("."));
+                // Add the matching files
+                if (cfile.find(".pbin") != std::string::npos)
+                    pbinfiles.push_back(params.datapath + '/' + pdir->d_name);
+            }
+        }
+        else
+            return false;
+
+        if (pbinfiles.size() == queryfiles.size())
+        {
+            // check if all files exist
+            for (auto &ms2file : queryfiles)
+            {
+                string_t tempfile = ms2file + ".pbin";
+                if (std::find(pbinfiles.begin(), pbinfiles.end(), tempfile) == pbinfiles.end())
+                    return false;
+            }
+        }
+        else
+            return false;
+
+        return true;
+    };
+
     // check if file exists
-    bool exists = fileexists(fname);
+    bool exists = !params.reindex && fileexists(fname) && verifypbinfiles();
+
 
     // if the file does not exist, create it
     if (!exists)
     {
+        // set reindex = true
+        params.reindex = true;
+
 #ifdef USE_MPI
 
         // create a MPI data type
@@ -691,14 +735,14 @@ status_t MSQuery::extractbatch(uint_t count, Queries<T> *expSpecs, int_t &rem)
         /* Get a new ifstream object and open file */
         qfile = new ifstream;
 
-        // FIXME: 
-        (BINMS2)? qfile->open(MS2file, ios::in | ios::binary) : qfile->open(MS2file, ios::in);
+        // Open file as bin or simple text
+        (params.filetype == gParams::FileType_t::PBIN)? qfile->open(MS2file, ios::in | ios::binary) : qfile->open(MS2file, ios::in);
     }
 
     /* Check if file opened */
     if (qfile->is_open() /*&& status =SLM_SUCCESS*/)
     {
-        if (BINMS2)
+        if (params.filetype == gParams::FileType_t::PBIN)
             readBINbatch<T>(startspec, endspec, expSpecs);
         else
         {
@@ -708,6 +752,12 @@ status_t MSQuery::extractbatch(uint_t count, Queries<T> *expSpecs, int_t &rem)
                 status = pickpeaks(expSpecs);
             }
         }
+    }
+    else
+    {
+        std::cerr << "Error opening file: " << MS2file << std::endl;
+        status = ERR_FILE_NOT_FOUND;
+        exit(ERR_FILE_NOT_FOUND);
     }
 
     //if (status == SLM_SUCCESS)
@@ -1052,7 +1102,7 @@ status_t MSQuery::DeinitQueryFile()
         qfile = NULL;
     }
 
-    if (!BINMS2)
+    if (params.filetype == gParams::FileType_t::MS2)
         spectrum.deallocate();
 
     spectrum.SpectrumSize = 0;

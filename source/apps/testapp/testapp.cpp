@@ -32,6 +32,12 @@ status_t main(int_t argc, char_t* argv[])
     std::cout << "Feel free to modify and experiment with it. Enjoy!" << std::endl;
     std::cout << "--------------------------------------------------------------------" << std::endl;
 
+    // check two types
+    if constexpr (std::is_same<int, spectype_t>::value)
+        std::cout << "Type is int" << std::endl;
+    else    
+        std::cout << "Type is NOT int" << std::endl;
+
 #if 0
     int n = 1e8;
     float *h_a, *h_b, *h_c;

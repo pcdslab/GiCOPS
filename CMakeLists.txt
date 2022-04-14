@@ -69,7 +69,6 @@ if(NOT CXX_STANDARD OR (CXX_STANDARD LESS ${CMAKE_CXX_STANDARD_REQUIRED}))
     message(STATUS "Setting CXX_STANDARD to ${CMAKE_CXX_STANDARD_REQUIRED}")
 endif()
 
-
 ##########################################################################################
 #       MPI and OpenMP
 ##########################################################################################
@@ -93,6 +92,21 @@ if(MPI_FOUND AND USE_MPI)
     include_directories(SYSTEM ${MPI_INCLUDE_PATH})
     target_compile_definitions(MPI::MPI_CXX INTERFACE)
     set (TMP mpi ${TMP})
+endif()
+
+##########################################################################################
+#       GPU and CUDA
+##########################################################################################
+
+if (USE_GPU)
+    include(CheckLanguage)
+    check_language(CUDA)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    list(APPEND _CUDA CUDA::CUDA_CXX)
+    include_directories(SYSTEM ${CUDA_INCLUDE_PATH})
+    set (TMP cuda ${TMP})
 endif()
 
 ##########################################################################################

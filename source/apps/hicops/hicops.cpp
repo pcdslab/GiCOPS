@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019  Muhammad Haseeb, Fahad Saeed
+ * Copyright (C) 2022  Muhammad Haseeb, Fahad Saeed
  * Florida International University, Miami, FL
  *
  * This program is free software: you can redistribute it and/or modify
@@ -45,7 +45,6 @@ status_t main(int_t argc, char_t* argv[])
     status_t status = SLM_SUCCESS;
 
     // file extensions to find
-    const string_t patt = {".ms2"};
     const char_t extension[] = ".peps";
 
     /* Benchmarking */
@@ -130,6 +129,9 @@ status_t main(int_t argc, char_t* argv[])
     if (status == SLM_SUCCESS)
         hcp::apps::argp::parseAndgetParams(argc, argv, params);
 
+    // set GPU acceleration enabled to false
+    params.toggleGPU(false);
+
     // Print HiCOPS header after the ranks have been assigned
     if (params.myid == 0)
     {
@@ -149,7 +151,7 @@ status_t main(int_t argc, char_t* argv[])
             cfile = cfile.substr(cfile.find_last_of("."));
 
             /* Add the matching files */
-            if (cfile.find(patt) != std::string::npos)
+            if (cfile.find(params.dataext) != std::string::npos)
                 queryfiles.push_back(params.datapath + '/' + pdir->d_name);
         }
     }

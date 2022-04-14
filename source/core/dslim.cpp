@@ -44,7 +44,6 @@ status_t DSLIM_Construct(Index *index)
 {
     status_t status = SLM_SUCCESS;
 
-#if 0 //!(defined (GPU) && defined(CUDA))
 
     uint_t threads = params.threads;
     uint_t maxz = params.maxz;
@@ -54,7 +53,7 @@ status_t DSLIM_Construct(Index *index)
     uint_t scale = params.scale;
 
     // allocate memory to temporarily store the fragment ion data
-    if (status == SLM_SUCCESS && SpecArr == NULL)
+    if (status == SLM_SUCCESS && SpecArr == NULL && !params.useGPU)
     {
         /* Spectra Array (SA) */
         SpecArr = new uint_t[MAX_IONS];
@@ -64,7 +63,6 @@ status_t DSLIM_Construct(Index *index)
             status = ERR_BAD_MEM_ALLOC;
     }
 
-#endif // !(defined (GPU) && defined(CUDA))
 
     if (status == SLM_SUCCESS)
     {
@@ -77,29 +75,28 @@ status_t DSLIM_Construct(Index *index)
             /* Distributed SLM Ions Array construction */
             for (uint_t chno = 0; chno < index->nChunks && status == SLM_SUCCESS; chno++)
             {
-#if 1 //defined (GPU) && defined(CUDA)
+#if defined(USE_GPU)
 
-                // construct index on the GPU
-                status = hcp::gpu::cuda::s1::ConstructIndexChunk(index, chno);
+                if (params.useGPU)
+                    // construct index on the GPU
+                    status = hcp::gpu::cuda::s1::ConstructIndexChunk(index, chno);
+                else
+#endif // defined(USE_GPU)
+                {
+                    /* Construct each DSLIM chunk in Parallel */
+                    status = DSLIM_ConstructChunk(threads, index, chno);
 
-#else
-
-                /* Construct each DSLIM chunk in Parallel */
-                status = DSLIM_ConstructChunk(threads, index, chno);
-
-                /* Apply SLM-Transform on the chunk */
-                if (status == SLM_SUCCESS)
-                    status = DSLIM_SLMTransform(threads, index, chno);
-
-#endif // defined (GPU) && defined(CUDA)
+                    /* Apply SLM-Transform on the chunk */
+                    if (status == SLM_SUCCESS)
+                        status = DSLIM_SLMTransform(threads, index, chno);
+                }
             }
         }
     }
 
-#if 0//defined (GPU) && defined(CUDA)
 
     // construct bA on the CPU
-    if (status == SLM_SUCCESS)
+    if (status == SLM_SUCCESS && !params.useGPU)
     {
         const uint_t speclen = peplen_1 * maxz * iSERIES;
 
@@ -139,13 +136,11 @@ status_t DSLIM_Construct(Index *index)
     }
 
     // stablize the iA data
-    if (status == SLM_SUCCESS)
+    if (status == SLM_SUCCESS && !params.useGPU)
     {
         for (uint_t chunk_number = 0; chunk_number < index->nChunks; chunk_number++)
             status = DSLIM_Optimize(index, chunk_number);
     }
-
-#endif //!(defined (GPU) && defined(CUDA))
 
     return status;
 }
@@ -731,21 +726,23 @@ status_t DSLIM_DeallocatePepIndex(Index *index)
 
 status_t DSLIM_DeallocateSpecArr()
 {
-#if 1 // defined (GPU) && defined(CUDA)
+#if defined(USE_GPU)
 
-    // free the fragment ion data memory on GPU
-    hcp::gpu::cuda::s1::freeFragIon();
-
-#else
-
-    // free SpecArr on CPU
-    if (SpecArr != nullptr)
+    if (params.useGPU)
     {
-        delete[] SpecArr;
-        SpecArr= nullptr;
+        // free the fragment ion data memory on GPU
+        hcp::gpu::cuda::s1::freeFragIon();
     }
-
-#endif // defined (GPU) && defined(CUDA)
+    else
+#endif // defined(USE_GPU)
+    {
+        // free SpecArr on CPU
+        if (SpecArr != nullptr)
+        {
+            delete[] SpecArr;
+            SpecArr= nullptr;
+        }
+    }
 
     // nothing really to return so success
     return SLM_SUCCESS;

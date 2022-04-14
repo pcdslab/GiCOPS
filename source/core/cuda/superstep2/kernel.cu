@@ -64,9 +64,8 @@ namespace s2
 //
 void preprocess(MSQuery *query, string_t &filename, int fileindex)
 {
-    // TODO: Read and preprocess the input MS2 data.
-    // FIXME condition at which it will depend
-    if (BINMS2)
+    // Read and preprocess the input MS2 data.
+    if (params.filetype == gParams::FileType_t::PBIN)
     {
         // local variables
         int maxlen = 0;
@@ -82,7 +81,7 @@ void preprocess(MSQuery *query, string_t &filename, int fileindex)
         int nchunks = (nqueries / QCHUNK) + (nqueries % QCHUNK > 0);
 
         // new filename with .bin extension
-        string_t filename_bin(std::move(filename + ".bin"));
+        string_t filename_bin(std::move(filename + ".pbin"));
 
         // set the filename
         query->setFilename(filename_bin);
@@ -592,7 +591,7 @@ std::array<int, 2> readAndPreprocess(string_t &filename)
                 }
 
                 // integrize the values if spectype_t is int
-                if (TypeIsInt<spectype_t>::value)
+                if constexpr (std::is_same<int, spectype_t>::value)
                 {
                     mzs[m_idx] = std::atof(mz.c_str()) * params.scale;
                     intns[m_idx] = std::atof(intn.c_str()) * 1000;

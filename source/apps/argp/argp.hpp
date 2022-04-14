@@ -109,7 +109,7 @@ struct params_t : public argparse::Args
     std::optional<string_t> &workdir    = kwarg("c,wdir", "path to working directory");
 
     // database will be uploaded at the working directory in SGCI
-    string_t &dbpath                     = kwarg("db,database", "path to processed database files (*.pep)").set_default(workdir.value_or(getcurrpath()));
+    string_t &dbpath                     = kwarg("db,database", "path to processed database files (*.peps)").set_default(workdir.value_or(getcurrpath()));
 
     // dataset will be uploaded at the working directory in SGCI
     string_t &dataset                    = kwarg("dat, dataset", "path to MS/MS dataset (*.ms2)").set_default(workdir.value_or(getcurrpath()));
@@ -122,6 +122,9 @@ struct params_t : public argparse::Args
 
     // max threads for preprocessing subtask R per HiCOPS instance
     int &prepthreads                     = kwarg("p,prep_threads", "maximum allowed threads for subtask-R per HiCOPS instance").set_default(std::max(1, static_cast<int>(std::thread::hardware_concurrency()/3)));
+
+    // max gpu threads to run at once
+    int &gputhreads                      = kwarg("g,gputhreads", "maximum allowed threads simultaneously offloading to GPU").set_default(8);
 
     // number of mods per peptide
     int &nmods                           = kwarg("n,nmods", "allowed maximum PTMs per peptide").set_default(3);
@@ -179,8 +182,23 @@ struct params_t : public argparse::Args
     std::optional<std::vector<std::string>> &mods     
                                          = kwarg("m,mods", "list of variable post-translational modifications (PTMs)").multi_argument();
 
+    // re-index MS/MS data and create and index
+    bool &reindex                        = flag("reindex", "rebuild/update the MS/MS dataset index");
+
+    // do not build or use MS/MS cache
+    bool &nocache                        = flag("nocache", "do not cache preprocessed MS/MS dataset to .pbin");
+
+    // use GumbelFit / Survival function modeling instead of TailFit for e_value computation
+    bool &gumbelfit                      = flag("e,gfit", "use GumbelFit/Survival instead of TailFit to compute e-values");
+
+    // match ion when doing fragment ion matching
+    bool &matchcharge                    = flag("matchz", "matching ion charges during fragment-ion search");
+
+    // do not show database search progress marks
+    bool &progress                       = flag("noprogress", "do not display progress marks");
+
     // toggle verbose mode
-    bool &verbose                        = flag("v,verbose", "flag to toggle verbose");
+    bool &verbose                        = flag("v,V,verbose", "enable verbose mode");
 };
 
 auto &get_instance(int argc, char* argv[])
@@ -199,6 +217,9 @@ void getParams(gParams &params)
     params.dbpath = parser.dbpath;
     params.datapath = parser.dataset;
     params.workspace = parser.workspace;
+
+    // auto sanitize and set data extension
+    params.setindexAndCache(parser.reindex, parser.nocache);
 
 #if !defined(ARGP_ONLY)
 
@@ -224,6 +245,12 @@ void getParams(gParams &params)
 #else
         params.maxprepthds = 1;
 #endif /* USE_OMP */
+
+#ifdef USE_GPU
+        params.gputhreads = parser.gputhreads;
+#else
+        params.gputhreads = 0;
+#endif // USE_GPU
 
         // Get the min peptide length
         params.min_len = parser.minlength;

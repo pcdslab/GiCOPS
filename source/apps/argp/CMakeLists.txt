@@ -5,7 +5,7 @@ project(argp LANGUAGES C CXX)
 add_executable(argp ${_EXCLUDE}
     ${CMAKE_CURRENT_LIST_DIR}/argp.cpp)
 
-add_dependencies(argp argparse)
+add_dependencies(argp magic_enum argparse)
 
 # include core/include and generated files
 target_include_directories(argp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../../core/include ${CMAKE_BINARY_DIR} ${MAGICENUM_INCLUDE_DIR} ${ARGPARSE_INCLUDE_DIR})

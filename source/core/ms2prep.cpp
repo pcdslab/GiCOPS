@@ -113,10 +113,10 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
 
     int_t cputhreads = params.threads;
 
-#if 1 // defined (GPU) && defined (CUDA)
-    int_t gputhreads = 8;
+#if defined(USE_GPU)
+    int_t gputhreads = params.gputhreads;
     cputhreads -= gputhreads;
-#endif // GPU && CUDA
+#endif // defined(USE_GPU)
 
     // get the ptrs instance
     MSQuery **ptrs = get_instance();
@@ -136,7 +136,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
         auto pfiles = hcp::mpi::getPartitionSize(nfiles);
 
         // initialize the MSQuery index
-        bool summaryExists = MSQuery::init_index();
+        bool summaryExists = MSQuery::init_index(queryfiles);
 
         // if pfiles > 0 and !summaryExists
         if (pfiles && !summaryExists)
@@ -151,7 +151,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
             std::generate(std::begin(ms2local) + 1, std::end(ms2local), 
                           [n=params.myid] () mutable { return n += params.nodes; });
 
-#if 1 // defined (GPU) && defined (CUDA)
+#if defined(USE_GPU)
 
             // initialize a thread-safe MSQuery queue for CPU + GPU processing
             std::queue<int_t> ms2QueueIdx;
@@ -237,7 +237,6 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
             wThreads.clear();
 
 #else
-
 #ifdef USE_OMP
 #pragma omp parallel for schedule (dynamic, 1)
 #endif/* _OPENMP */
@@ -251,7 +250,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
 #endif // USE_MPI
             }
 
-#endif // GPU && CUDA
+#endif // defined(USE_GPU)
 
             // in case of one node, we need to write in order
             if (params.nodes == 1)

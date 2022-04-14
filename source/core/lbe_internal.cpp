@@ -177,19 +177,21 @@ status_t LBE_Initialize(Index *index)
     //Sort the peptide index based on peptide precursor mass
     if (status == SLM_SUCCESS)
     {
-#if 1 //defined (GPU) && defined(CUDA)
+#if defined(USE_GPU)
 
-        // sort pepEntries on the GPU
-        hcp::gpu::cuda::s1::SortPeptideIndex(index);
-#else
-        // directly sort the pepEntries on the CPU
-        std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, [](pepEntry &e1, pepEntry &e2) { return e1 < e2; });
-
-#endif // GPU && CUDA
+        if (params.useGPU)
+            // sort pepEntries on the GPU
+            hcp::gpu::cuda::s1::SortPeptideIndex(index);
+        else
+#endif // defined(USE_GPU)
+        {
+            // directly sort the pepEntries on the CPU
+            std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, [](pepEntry &e1, pepEntry &e2) { return e1 < e2; });
+        }
     }
 
     // 
-    // FIXME: Soft remove invalid peptides
+    // MAYBE: Soft remove invalid peptides
     // Will need to call LBE_Distribute and/or LBE_CreatePartitions again
     //
     auto removeInvalidPeps = [&]()
@@ -219,7 +221,7 @@ status_t LBE_Initialize(Index *index)
         }
     };
 
-    // TODO: soft remvoe the invalid mods if present
+    // MAYBE: soft remvoe the invalid mods if present
     // removeInvalidPeps();
 
     if (status != SLM_SUCCESS)

@@ -356,10 +356,18 @@ typedef struct _Index
 } Index;
 
 /* Structure for global Parameters */
-typedef struct _globalParams
+class gParams
 {
+public:
+
+enum FileType_t {
+    MS2,
+    PBIN
+};
+
     uint_t threads;
     uint_t maxprepthds;
+    uint_t gputhreads;
     uint_t min_len;
     uint_t max_len;
     uint_t maxz;
@@ -378,6 +386,10 @@ typedef struct _globalParams
     int_t  base_int;
     int_t  min_int;
 
+    bool_t useGPU;
+    bool_t reindex;
+    bool_t nocache;
+
     double_t dM;
     double_t res;
     double_t expect_max;
@@ -385,16 +397,21 @@ typedef struct _globalParams
     string_t dbpath;
     string_t datapath;
     string_t workspace;
+    const string_t dataext = ".ms2";
+
     string_t modconditions;
 
     DistPolicy_t policy;
 
+    FileType_t filetype;
+
     SLM_vMods vModInfo;
 
-    _globalParams()
+    gParams()
     {
         threads = 1;
         maxprepthds = 1;
+        gputhreads = 1;
         min_len = 6;
         max_len = 40;
         maxz = 3;
@@ -405,6 +422,9 @@ typedef struct _globalParams
         min_cpsm = 4;
         base_int = 1000000;
         min_int = 0.01 * base_int;
+        useGPU = false;
+        reindex = true;
+        nocache = false;
         nodes = 1;
         myid = 0;
         spadmem = 2048;
@@ -414,12 +434,48 @@ typedef struct _globalParams
         dM = 500.0;
         res = 0.01;
         policy = DistPolicy_t::cyclic;
+        filetype = FileType_t::PBIN;
     }
 
+    ~gParams() = default;
+
+    void toggleGPU(bool_t _useGPU)
+    {
+#if defined(USE_GPU)
+        this->useGPU = _useGPU;
+
+        if (!this->useGPU)
+            this->gputhreads = 0;
+#else
+        if (_useGPU)
+            std::cout << "ERROR: Build with USE_GPU=ON to enable GPU." << std::endl;
+
+        this->useGPU = false;
+        this->gputhreads = 0;
+#endif // USE_GPU
+    }
+
+    void setindexAndCache(bool _reindex, bool _nocache)
+    {
+        this->nocache = _nocache;
+        this->reindex = _reindex;
+
+        // if nocache is true then also reindex
+        if (this->nocache)
+        {
+            this->filetype = FileType_t::MS2;
+            this->reindex = _reindex = true;
+        }
+        else
+        {
+            this->filetype = FileType_t::PBIN;
+        }
+    }
     void print()
     {
         printVar(threads);
         printVar(maxprepthds);
+        printVar(gputhreads);
         printVar(min_len);
         printVar(max_len);
         printVar(maxz);
@@ -429,6 +485,9 @@ typedef struct _globalParams
         printVar(min_shp);
         printVar(min_cpsm);
         printVar(base_int);
+        printVar(useGPU);
+        printVar(reindex);
+        printVar(nocache);
         printVar(min_int);
         printVar(nodes);
         printVar(myid);
@@ -442,6 +501,8 @@ typedef struct _globalParams
         printVar(dbpath);
         printVar(datapath);
         printVar(workspace);
+        printVar(dataext);
+        printVar(filetype);
 
         printVar(modconditions);
         printVar(vModInfo.num_vars);
@@ -456,7 +517,7 @@ typedef struct _globalParams
         }
     }
 
-}gParams;
+};
 
 
 /* Experimental MS/MS spectra data */

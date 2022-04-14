@@ -23,21 +23,6 @@
 #include "common.hpp"
 #include "utils.h"
 
-
-// Check for integer type at compile time
-template<typename T>
-struct TypeIsInt
-{
-    static const bool value = false;
-};
-
-template<>
-struct TypeIsInt<int>
-{
-    static const bool value = true;
-};
-
-
 /* Spectrum */
 template <typename T>
 struct _Spectrum
@@ -151,7 +136,7 @@ public:
     uint_t getQAcount();
     status_t initialize(string_t *, int_t);
     void vinitialize(string_t *, int_t);
-    static bool init_index();
+    static bool init_index(const std::vector<string_t> &);
     static status_t write_index();
     static status_t read_index(info_t *, int);
     status_t archive(int_t);

@@ -542,7 +542,7 @@ status_t DSLIM_QuerySpectrum(Queries<spectype_t> *ss, Index *index, uint_t idxch
         UNUSED_PARAM(liBuff);
     }
 
-#ifndef _OPENMP
+#if !defined(USE_OMP)
     UNUSED_PARAM(threads);
 #endif /* USE_OMP */
 

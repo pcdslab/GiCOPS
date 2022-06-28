@@ -50,28 +50,6 @@ T getPartitionSize(T isize)
     return loc_size;
 }
 
-//
-// FUNCTION: barrier (wrapper for MPI_Barrier)
-//
-inline status_t barrier()
-{
-    status_t status = SLM_SUCCESS;
-
-#ifdef USE_MPI
-    status = MPI_Barrier(MPI_COMM_WORLD);
-#endif // USE_MPI
-
-    return status;
-}
-
-//
-// TODO: still to implement
-//
-status_t allgather()
-{
-    return SLM_SUCCESS;
-}
-
 } // namespace mpi
 
 namespace ms2
@@ -114,7 +92,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
     int_t cputhreads = params.threads;
 
 #if defined(USE_GPU)
-    int_t gputhreads = params.gputhreads;
+    int_t gputhreads = 2 ; // fixme: params.gputhreads;
     cputhreads -= gputhreads;
 #endif // defined(USE_GPU)
 

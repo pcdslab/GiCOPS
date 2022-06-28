@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021  Muhammad Haseeb, and Fahad Saeed
+ * Copyright (C) 2022  Muhammad Haseeb, and Fahad Saeed
  * Florida International University, Miami, FL
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,36 +19,30 @@
 
 #pragma once
 
-#if defined USE_MPI
-#include <mpi.h>
-#endif // USE_MPI
 
+#include <type_traits>
 #include "common.hpp"
-#include "msquery.hpp"
-#include "lwqueue.h"
-#include "lwbuff.h"
-#include "hicops_mpi.hpp"
-#include "hicops_instr.hpp"
-
-//
-// Superstep 2
-//
 
 namespace hcp
 {
-namespace ms2
+
+namespace mpi
 {
-// synchronize superstep 2
-status_t synchronize();
 
-// get instance of ptrs
-MSQuery **& get_instance();
+//
+// FUNCTION: barrier (wrapper for MPI_Barrier)
+//
+inline status_t barrier()
+{
+    status_t status = SLM_SUCCESS;
 
-// initialize MS2 data index
-status_t initialize(lwqueue<MSQuery *>**, int_t&, int_t&);
+#ifdef USE_MPI
+    status = MPI_Barrier(MPI_COMM_WORLD);
+#endif // USE_MPI
 
-// delete the index
-void deinitialize();
+    return status;
+}
 
-} // namespace ms2
-} // namespace hcp
+
+} // namespace mpi
+} //namespace hcp

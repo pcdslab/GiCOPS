@@ -426,7 +426,14 @@ status_t MSQuery::pickpeaks(std::vector<T> &mzs, std::vector<T> &intns, int &spe
 
 void MSQuery::flushBinaryFile(string *filename, spectype_t *m_mzs, spectype_t *m_intns, float *rtimes, float *prec_mz, int *z, int *lens, int count, bool close)
 {
-    static std::ofstream qbFile(*filename + ".pbin", ios::binary);
+    static thread_local bool_t isNewFile = true;
+    static thread_local std::ofstream qbFile;
+
+    if (isNewFile)
+    {
+        qbFile.open(*filename + ".pbin", ios::binary);
+        isNewFile = false;
+    }
 
     if (qbFile.is_open())
     {
@@ -452,6 +459,7 @@ void MSQuery::flushBinaryFile(string *filename, spectype_t *m_mzs, spectype_t *m
     {
         qbFile.flush();
         qbFile.close();
+        isNewFile = true;
     }
 }
 

@@ -44,6 +44,7 @@ endif()
 #       CMake settings
 ##########################################################################################
 option(USE_MPI "Enable MPI in hicops" ON)
+option(USE_GPU "Enable GPU (CUDA) support in hicops" OFF)
 option(USE_TIMEMORY "Enable Timemory instrumentation" OFF)
 option(USE_MPIP_LIBRARY "Enable MPIP instrumentation via Timemory" OFF)
 

@@ -22,6 +22,7 @@
 #include <string>
 #include "common.hpp"
 #include "utils.h"
+#include "hicops_mpi.hpp"
 
 /* Spectrum */
 template <typename T>

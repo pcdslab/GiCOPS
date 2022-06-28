@@ -101,7 +101,8 @@ __pycache__/
 *.so
 
 # tmp files
-~~*
+~*
+*.~*
 
 # Distribution / packaging
 .Python

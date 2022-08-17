@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <iostream>
 #include <cuda.h>
 
 namespace hcp

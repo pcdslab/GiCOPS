@@ -38,6 +38,9 @@ add_library (hicops-core SHARED ${c_sources} ${cxx_sources} ${cuda_sources})
 # add CUDA architecture property
 set_property(TARGET hicops-core  PROPERTY CUDA_ARCHITECTURES 60 70 80)
 
+# set CUDA_SEPARABLE_COMPILATION to ON
+set_property(TARGET hicops-core PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+
 # to include the generated config.hpp
 include_directories(${CMAKE_BINARY_DIR})
 

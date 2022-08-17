@@ -24,6 +24,8 @@
 #include "slmerr.h"
 #include "dslim.h"
 
+const int SEARCHINSTANCES = 128;
+
 namespace hcp
 {
 
@@ -36,6 +38,62 @@ namespace cuda
 namespace s3
 {
 
+/* Experimental MS/MS spectra data */
+template <typename T>
+struct dQueries
+{
+    T        *moz; /* Stores the m/z values of the spectra */
+    T  *intensity; /* Stores the intensity values of the experimental spectra */
+    uint_t        *idx; /* Row ptr. Starting index of each row */
+    //float_t  *precurse; /* Stores the precursor mass of each spectrum. */
+    int      *minlimits; // min index limits for each spectrum
+    int      *maxlimits; // max index limits for each spectrum
+    // int_t     *charges; // not needed yet
+    // float_t    *rtimes; // not needed yet
+    int_t     numPeaks;
+    int_t     numSpecs; /* Number of theoretical spectra */
+
+    dQueries();
+    ~dQueries();
+    void H2D(Queries<T> &rhs);
+
+    void reset()
+    {
+        numPeaks = 0;
+        numSpecs = 0;
+    }
+
+};
+
+struct dhCell
+{
+    float hyperscore;
+    int psid;
+    ushort_t idxoffset;
+    ushort_t sharedions;
+};
+
+struct dScores
+{
+    BYC        *scores;
+    double_t *survival;
+    dhCell    *topscore;
+    int      *cpsms;
+
+    dScores() = default;
+    ~dScores();
+    void init(int size);
+};
+
+dScores *&getScorecard(int chunksize);
+
+void freeScorecard();
+
+status_t initialize();
+
+status_t search(Queries<spectype_t> *, Index *, uint_t);
+
+status_t deinitialize();
 
 } // namespace s3
 

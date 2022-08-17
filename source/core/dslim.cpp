@@ -19,6 +19,9 @@
 
 #include "dslim.h"
 #include "cuda/superstep1/kernel.hpp"
+#include "cuda/superstep3/kernel.hpp"
+
+
 using namespace std;
 
 /* Global Variables */
@@ -406,10 +409,12 @@ status_t DSLIM_InitializeScorecard(Index *index, uint_t idxs)
     {
         if (index[ii].chunksize > sz2)
             sz2 = index[ii].chunksize;
-
     }
 
-    sAize = std::min(sz2, sAize);
+    // no need to do the min here
+    //sAize = std::min(sz2, sAize);
+    sAize = sz2;
+
     Score = new BYICount[params.threads];
 
     if (Score != NULL)
@@ -440,6 +445,12 @@ status_t DSLIM_InitializeScorecard(Index *index, uint_t idxs)
         status = ERR_INVLD_MEMORY;
     }
 
+#if defined (USE_GPU)
+
+    if (params.useGPU)
+        hcp::gpu::cuda::s3::getScorecard(sAize);
+
+#endif // USE_GPU
     return status;
 }
 
@@ -730,6 +741,9 @@ status_t DSLIM_DeallocateSpecArr()
 
     if (params.useGPU)
     {
+        // free the CSR columns
+        hcp::gpu::cuda::s1::freebA();
+
         // free the fragment ion data memory on GPU
         hcp::gpu::cuda::s1::freeFragIon();
     }
@@ -777,6 +791,14 @@ status_t DSLIM_DeallocateSC()
         Score = NULL;
 
     }
+
+#if defined (USE_GPU)
+
+    if (params.useGPU)
+        // free the Scorecard memory on GPU
+        hcp::gpu::cuda::s3::freeScorecard();
+
+#endif // USE_GPU
 
     return SLM_SUCCESS;
 }

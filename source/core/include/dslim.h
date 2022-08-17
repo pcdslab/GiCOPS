@@ -167,6 +167,14 @@ status_t DSLIM_DeallocateSpecArr();
 
 status_t DSLIM_SearchManager(Index *);
 
+status_t DistributedSearch(Index *);
+
+status_t DSLIM_Setup_Handles();
+
+status_t DSLIM_Destroy_Handles();
+
+status_t DSLIM_MS2Initialize();
+
 /* FUNCTION: DSLIM_QuerySpectrum
  *
  * DESCRIPTION: Query the DSLIM for all query peaks

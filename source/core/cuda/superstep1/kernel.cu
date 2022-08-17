@@ -40,14 +40,8 @@
 
 extern gParams params;
 
-// array to store PTM masses
-__constant__ float_t modMass[ALPHABETS];
-
-// amino acid masses
-__constant__ float_t aaMass[ALPHABETS];
-
-// static mod masses
-__constant__ float_t statMass[ALPHABETS];
+// include CUDA constant variables
+#include "cuda/constants.cuh"
 
 namespace hcp 
 {
@@ -97,7 +91,7 @@ __host__ void initMods(SLM_vMods *vMods)
         std::string residues = std::string(&vMods->vmods[i].residues[0]);
 
         for (auto aa : residues)
-            vMass[AAidx(aa)] = vMods->vmods[i].modMass/params.scale;
+            vMass[AAidx(aa)] = static_cast<double>(vMods->vmods[i].modMass)/params.scale;
     }
 
     // copy to CUDA constant arrays
@@ -229,14 +223,11 @@ void SortpepEntries(Index *index, T *h_mz)
 // -------------------------------------------------------------------------------------------- //
 
 // stable sort fragment-ion data on GPU
-__host__ void StableKeyValueSort(uint_t *d_keys, uint_t* h_data, int size)
+__host__ void StableKeyValueSort(uint_t *d_keys, uint_t* h_data, int size, bool isSearch)
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
-    uint_t *d_data = nullptr;
-
-    // initialize device vector
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_data, size, driver->stream[0]));
+    uint_t *d_data = getATcols(size);
 
     //thrust::device_vector<uint_t> d_data(size);
     // enumerate indices
@@ -245,28 +236,83 @@ __host__ void StableKeyValueSort(uint_t *d_keys, uint_t* h_data, int size)
     // sort the data using keys
     thrust::stable_sort_by_key(thrust::device.on(driver->get_stream()), d_keys, d_keys + size, d_data);
 
-    // copy sorted data to host array
-    hcp::gpu::cuda::error_check(D2H(h_data, d_data, size, driver->stream[0]));
-    //thrust::copy(d_data.begin(), d_data.end(), h_data);
+    if (!isSearch)
+        // copy sorted data to host array
+        hcp::gpu::cuda::error_check(D2H(h_data, d_data, size, driver->stream[0]));
+        //thrust::copy(d_data.begin(), d_data.end(), h_data);
 
-    // free the device array
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_data, driver->stream[0]));
+    if (!isSearch)
+        // free the device columns in indexing phase only
+        freeATcols();
 
     return;
 }
 
 // -------------------------------------------------------------------------------------------- //
 
-__host__  uint_t*& getFragIon()
+__host__ uint_t*& getFragIon()
 {
     static thread_local uint_t *d_fragIon = nullptr;
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
     // allocate device vector only once
     if (d_fragIon == nullptr)
-        hcp::gpu::cuda::device_allocate_async(d_fragIon, MAX_IONS, driver->stream[0]);
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_fragIon, MAX_IONS, driver->stream[0]));
 
     return d_fragIon;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+__host__ uint_t*& getATcols(int size)
+{
+    static thread_local uint_t *d_ATcols = nullptr;
+
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+
+    // allocate device vector only once
+    if (d_ATcols == nullptr)
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_ATcols, size, driver->stream[0]));
+
+    return d_ATcols;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+__host__ uint_t*& getbA()
+{
+    static thread_local uint_t *d_bA = nullptr;
+    // size of the bA
+    uint_t bAsize = ((uint_t)(params.max_mass * params.scale)) + 1;
+
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+
+    // allocate device vector only once
+    if (d_bA == nullptr)
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_bA, bAsize, driver->stream[0]));
+
+    return d_bA;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+__host__ void freeATcols()
+{
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+    auto d_ATcols = getATcols();
+
+    // free the device vector only once
+    if (d_ATcols != nullptr)
+    {
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_ATcols, driver->stream[0]));
+        d_ATcols = nullptr;
+    }
+
+    // must sync here to release all allocated memory 
+    // before next superstep
+    driver->stream_sync();
+
+    return;
 }
 
 // -------------------------------------------------------------------------------------------- //
@@ -274,12 +320,13 @@ __host__  uint_t*& getFragIon()
 __host__ void freeFragIon()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
+
     auto d_fragIon = getFragIon();
 
     // free the device vector only once
     if (d_fragIon != nullptr)
     {
-        hcp::gpu::cuda::device_free_async(d_fragIon, driver->stream[0]);
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_fragIon, driver->stream[0]));
         d_fragIon = nullptr;
     }
 
@@ -292,8 +339,29 @@ __host__ void freeFragIon()
 
 // -------------------------------------------------------------------------------------------- //
 
+__host__ void freebA()
+{
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+    auto d_bA = getbA();
+
+    // free the device vector only once
+    if (d_bA != nullptr)
+    {
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_bA, driver->stream[0]));
+        d_bA = nullptr;
+    }
+
+    // must sync here to release all allocated memory 
+    // before next superstep
+    driver->stream_sync();
+
+    return;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
 // construct the index on the GPU
-__host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
+__host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number, bool isSearch)
 {
     status_t status = SLM_SUCCESS;
 
@@ -309,7 +377,6 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
 
     // get driver object
     auto driver = hcp::gpu::cuda::driver::get_instance();
-
 
     // check if last chunk
     bool lastChunk = (chunk_number == (index->nChunks - 1))? true: false;
@@ -358,10 +425,11 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number)
     uint_t *iAPtr = index->ionIndex[chunk_number].iA;
 
     // Stable keyValue sort the fragment-ion data and copy to iAPtr
-    StableKeyValueSort(d_fragIon, iAPtr, iAsize);
+    StableKeyValueSort(d_fragIon, iAPtr, iAsize, isSearch);
 
-    // construct corresponding DSLIM.bA
-    ConstructbA(index, iAsize, chunk_number);
+    if (!isSearch)
+        // construct corresponding DSLIM.bA
+        ConstructbA(index, iAsize, chunk_number);
 
     // free memory
     if (lastChunk == true)
@@ -392,10 +460,7 @@ __host__ void ConstructbA(Index *index, size_t iAsize, uint chunk_number)
     auto d_sortedFragIon = getFragIon();
 
     // device vector for bA data
-    uint_t *d_bA = nullptr;
-
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_bA, bAsize, driver->stream[0]));
-    //thrust::device_vector<uint_t> d_bA(bAsize);
+    uint_t *d_bA = getbA();
 
     // enumerate indices
     thrust::sequence(thrust::device.on(driver->get_stream()), d_bA, d_bA + bAsize);
@@ -406,9 +471,6 @@ __host__ void ConstructbA(Index *index, size_t iAsize, uint chunk_number)
     // copy bA data back to CPU
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(index->ionIndex[chunk_number].bA, d_bA, bAsize, driver->stream[0]));
     //thrust::copy(d_bA, d_bA + bAsize, index->ionIndex[chunk_number].bA);
-
-    // free memory
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_bA, driver->stream[0]));
 }
 
 // -------------------------------------------------------------------------------------------- //

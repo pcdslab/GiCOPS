@@ -46,13 +46,23 @@ void exclusiveScan(T *array, int size, T init = 0);
 void SortPeptideIndex(Index *index);
 
 // function to comnstruct a complete chunk of the DSLIM index (both iA and bA)
-status_t ConstructIndexChunk(Index *index, int_t chunk_number);
+status_t ConstructIndexChunk(Index *index, int_t chunk_number, bool isSearch = false);
 
 // kernel to stable sort the fragment-ion data
 void StableKeyValueSort(uint_t *keys, uint_t* data, int size);
 
 // free the device memory allocated for the fragment ion data
 void freeFragIon();
+
+void freebA();
+
+void freeATcols();
+
+uint_t*& getbA();
+
+uint_t*& getATcols(int size = 0);
+
+uint_t*& getFragIon();
 
 } // namespace s1
 

@@ -108,7 +108,7 @@ __host__ void freed_eValues()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
-    auto d_evalues = getd_eValues();
+    auto &&d_evalues = getd_eValues();
     
     if (d_evalues)
     {

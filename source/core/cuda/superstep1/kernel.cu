@@ -327,7 +327,7 @@ __host__ uint_t*& getbA()
 __host__ void freeATcols()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
-    auto d_ATcols = getATcols(1);
+    auto &&d_ATcols = getATcols(1);
 
     // free the device vector only once
     if (d_ATcols != nullptr)
@@ -349,7 +349,7 @@ __host__ void freeFragIon()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
-    auto d_fragIon = getFragIon();
+    auto &&d_fragIon = getFragIon();
 
     // free the device vector only once
     if (d_fragIon != nullptr)
@@ -370,7 +370,7 @@ __host__ void freeFragIon()
 __host__ void freebA()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
-    auto d_bA = getbA();
+    auto &&d_bA = getbA();
 
     // free the device vector only once
     if (d_bA != nullptr)

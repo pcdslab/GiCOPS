@@ -450,7 +450,7 @@ status_t main(int_t argc, char_t* argv[])
     auto es = tt->get();
 #else
         auto es = ELAPSED_SECONDS(start_tim);
-#endif
+#endif // USE_TIMEMORY
         std::cout << "Total Elapsed Time: " << es << "s" << std::endl;
 
         /* Print final program status */

@@ -347,7 +347,7 @@ __host__ dQueries<spectype_t> *& getdQueries()
 
 __host__ void freedQueries()
 {
-    auto dqueries = getdQueries();
+    auto &&dqueries = getdQueries();
 
     if (dqueries)
     {
@@ -433,8 +433,6 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
         status = hcp::gpu::cuda::s4::getIResults(index, gWorkPtr, gpucurrSpecID, CandidatePSMS);
     else
 #else
-        // unused param
-        UNUSED_PARAM(CandidatePSMS);
         // combine the results
         status = hcp::gpu::cuda::s4::processResults(index, gWorkPtr, gpucurrSpecID);
 #endif // USE_MPI

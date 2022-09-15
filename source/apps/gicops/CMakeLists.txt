@@ -1,5 +1,5 @@
 
-project(gicops LANGUAGES CUDA)
+project(gicops LANGUAGES CXX CUDA)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
@@ -7,7 +7,7 @@ set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 
 enable_language(CUDA)
 
-set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/gicops.cpp PROPERTIES LANGUAGE CUDA LINKER_LANGUAGE CUDA)
+set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/gicops.cpp PROPERTIES LANGUAGE CXX CUDA LINKER_LANGUAGE CXX CUDA)
 
 # hicops headers are available
 add_executable(gicops ${_EXCLUDE}

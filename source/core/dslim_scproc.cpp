@@ -108,7 +108,14 @@ status_t DSLIM_DistScoreManager()
             merge_tuple_t merge_instr("combine");
 #endif // USE_TIMEMORY
 
+            // use GPU if available
+#if defined (USE_GPU)
+            if (params.useGPU)
+                status = ScoreHandle->GPUCombineResults();
+            else
+#else
             status = ScoreHandle->CombineResults();
+#endif // USE_GPU
 
 #if defined (USE_TIMEMORY)
             merge_instr.stop();

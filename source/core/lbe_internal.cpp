@@ -457,7 +457,7 @@ status_t LBE_CountPeps(string &filename, Index *index, uint_t explen)
     }
     else
     {
-        std::cerr << std::endl << "FATAL: Could not read DB file: " << filename << std::endl;
+        std::cerr << std::endl << "FATAL: Could not read the file: " << filename << std::endl;
         status = ERR_INVLD_PARAM;
     }
 

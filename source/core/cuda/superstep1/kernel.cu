@@ -72,6 +72,34 @@ __host__ void ConstructbA(Index *index, size_t iAsize, uint chunk_number);
 
 // -------------------------------------------------------------------------------------------- //
 
+__host__ void initParams(gParams *hparams)
+{
+    //hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(dParams, hparams, sizeof(gParams)));
+
+    gParams dParams;
+
+    dParams.threads = hparams->threads;
+    
+    dParams.gputhreads = hparams->gputhreads;
+    dParams.min_len = hparams->min_len;
+    dParams.max_len = hparams->max_len;
+    dParams.maxz = hparams->maxz;
+    dParams.res = hparams->res;
+    dParams.scale = hparams->scale;
+    dParams.dM = hparams->dM;
+    dParams.dF = hparams->dF;
+    dParams.min_mass = hparams->min_mass;
+    dParams.max_mass = hparams->max_mass;
+    dParams.topmatches = hparams->topmatches;
+    dParams.expect_max = hparams->expect_max;
+    dParams.min_shp = hparams->min_shp;
+    dParams.min_cpsm = hparams->min_cpsm;
+    dParams.base_int = hparams->base_int;
+    dParams.min_int = hparams->min_int;
+    dParams.myid = hparams->myid;
+    dParams.nodes = hparams->nodes;
+}
+
 // initialize mod information
 __host__ void initMods(SLM_vMods *vMods)
 {
@@ -299,7 +327,7 @@ __host__ uint_t*& getbA()
 __host__ void freeATcols()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
-    auto d_ATcols = getATcols();
+    auto d_ATcols = getATcols(1);
 
     // free the device vector only once
     if (d_ATcols != nullptr)
@@ -416,6 +444,9 @@ __host__ status_t ConstructIndexChunk(Index *index, int_t chunk_number, bool isS
     int blockSize = peplen_1 * iSERIES;
 
     int shmemBytes = blockSize * sizeof(float_t);
+
+    // make sure the required shared memory is available to the kernel
+    cudaFuncSetAttribute(GenerateFragIonData, cudaFuncAttributeMaxDynamicSharedMemorySize, shmemBytes);
 
     // generate fragment ion data
     GenerateFragIonData<<<interval, blockSize, shmemBytes, driver->get_stream()>>>(d_fragIon, d_pepEntries, d_seqs, peplen, start_idx, scale, maxz, minmass, maxmass);
@@ -549,7 +580,7 @@ __global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, cha
         float_t myVal = 0;
 
         // shared memory to spill partial sums
-        __shared__ float_t pSums[1];
+        __shared__ float_t pSums[2];
 
         // shared memory to store spectra
         extern __shared__ float_t f_Spectrum[];

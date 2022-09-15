@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Muhammad Haseeb, and Fahad Saeed
+ * Copyright (C) 2023 Muhammad Haseeb, and Fahad Saeed
  * Florida International University, Miami, FL
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,6 +22,11 @@
 #include "config.hpp"
 #include "slm_dsts.h"
 #include "slmerr.h"
+#include "dslim.h"
+
+#include "cuda/superstep3/kernel.hpp"
+
+using dScores_t = hcp::gpu::cuda::s3::dScores;
 
 namespace hcp
 {
@@ -32,44 +37,20 @@ namespace gpu
 namespace cuda
 {
 
-namespace s1
+namespace s4
 {
 
-// function to initialize mods
-void initMods(SLM_vMods *vMods);
+double *& getd_eValues();
 
-void initParams(gParams *params);
+void freed_eValues();
 
-// function to compute partial sums
-template <typename T>
-void exclusiveScan(T *array, int size, T init = 0);
+status_t processResults(Index *, Queries<spectype_t> *, int);
 
-// function to sort the peptide index
-void SortPeptideIndex(Index *index);
+void processResults(double *h_data, float *h_hyp, int *h_cpsms, double *h_evalues, int bsize);
 
-// function to comnstruct a complete chunk of the DSLIM index (both iA and bA)
-status_t ConstructIndexChunk(Index *index, int_t chunk_number, bool isSearch = false);
+status_t getIResults(Index *, Queries<spectype_t> *, int, hCell *CandidatePSMS = nullptr);
 
-// kernel to stable sort the fragment-ion data
-void StableKeyValueSort(uint_t *keys, uint_t* data, int size);
-
-// free the device memory allocated for the fragment ion data
-void freeFragIon();
-
-void freebA();
-
-void freeATcols();
-
-uint_t*& getbA();
-
-uint_t*& getATcols(int size = 0);
-
-uint_t*& getFragIon();
-
-} // namespace s1
-
+} // namespace s4
 } // namespace cuda
-
 } // namespace gpu
-
 } // namespace hcp

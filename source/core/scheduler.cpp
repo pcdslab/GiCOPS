@@ -288,6 +288,9 @@ status_t Scheduler::runManager(double_t yt, int_t dec)
 {
     status_t status = SLM_SUCCESS;
 
+    // make this thread safe for GPU thread
+    sem_wait(&manage);
+
     /* The new value of signal is yt + yt -1
      * since input yt is only difference from
      * the last value */
@@ -296,8 +299,6 @@ status_t Scheduler::runManager(double_t yt, int_t dec)
     /* Use double exponential smoothing forecasting
      * (LASP) to predict future */
     (VOID) this->forecastLASP(yt);
-
-    sem_wait(&manage);
 
     /* Make decisions */
     if (this->makeDecisions(yt, dec))

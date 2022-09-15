@@ -100,6 +100,9 @@ status_t main(int_t argc, char_t* argv[])
     // set GPU acceleration enabled to true
     params.toggleGPU(true);
 
+    if (params.useGPU)
+        status = UTILS_SetParams(&params);
+
     // Print HiCOPS header after the ranks have been assigned
     if (params.myid == 0)
     {

@@ -36,13 +36,9 @@
 
 #include "cuda/superstep1/kernel.hpp"
 #include "cuda/superstep3/kernel.hpp"
+#include "cuda/superstep4/kernel.hpp"
 
 using namespace std;
-
-#define SEARCH_STREAM               0
-#define DATA_STREAM                 1
-
-#define HISTOGRAM_SIZE             (1 + (MAX_HYPERSCORE * 10) + 1)
 
 // -------------------------------------------------------------------------------------------- //
 
@@ -75,6 +71,13 @@ namespace gpu
 namespace cuda
 {
 
+namespace s4
+{
+
+template <typename T>
+extern __device__ void ArraySum(T *arr, int size, T *sum);
+
+}
 namespace s3
 {
 
@@ -83,7 +86,9 @@ namespace s3
 //
 // CUDA kernel declarations
 //
-__global__ void SpSpGEMM(dQueries<spectype_t> *d_WorkPtr, uint_t* d_bA, uint_t *d_iA, float_t *d_hscores, float_t *d_evalues, int iter, dScores *d_Scores, int dF, double dM, int speclen, int maxmass, int scale, int ixx);
+__global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *dQ_idx, int *dQ_minlimits, int *dQ_maxlimits, 
+                        uint_t* d_bA, uint_t *d_iA, int iter, BYC *bycP, int maxchunk, dScores *d_Scores, int dF, int speclen, 
+                        int maxmass, int scale, short min_shp, int ixx);
 
 // database search kernel host wrapper
 __host__ status_t SearchKernel(Queries<spectype_t> *, int, int);
@@ -94,20 +99,35 @@ __host__ status_t MinMaxLimits(Queries<spectype_t> *, Index *, double dM);
 template <typename T>
 __global__ void vector_plus_constant(T *vect, T val, int size);
 
-extern __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint *d_bA, uint *d_iA, int dF, int qspeclen, int speclen, int minlimit, int maxlimit);
+__global__ void assign_dScores(dScores *a, double_t *survival, dhCell *topscores, int *cpsms);
+
+__global__ void reset_dScores(dScores *d_Scores);
+
+extern __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint *d_bA, uint *d_iA, int dF, int qspeclen, int speclen, int minlimit, int maxlimit, int maxmass, int scale);
 
 extern __device__ void getMaxdhCell(dhCell *topscores, dhCell *out);
+
+extern __device__ void getMinsurvival(double_t *survival, double_t *out);
+
+
 // -------------------------------------------------------------------------------------------- //
 
-void dScores::init(int size)
+dScores::dScores()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
+    double_t *l_survival;
+    dhCell    *l_topscore;
+    int      *l_cpsms;
+
     // allocate memory for the scores
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(scores, size, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(survival, QCHUNK * HISTOGRAM_SIZE, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(topscore, QCHUNK, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(cpsms, QCHUNK, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(l_survival, HISTOGRAM_SIZE * QCHUNK, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(l_topscore, QCHUNK, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(l_cpsms, QCHUNK, driver->stream[DATA_STREAM]));
+
+    assign_dScores<<<1,1, 32, driver->stream[DATA_STREAM]>>>(this, l_survival, l_topscore, l_cpsms);
+
+    driver->stream_sync(DATA_STREAM);
 }
 
 // -------------------------------------------------------------------------------------------- //
@@ -116,15 +136,21 @@ dScores::~dScores()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(scores, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(survival, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(topscore, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(cpsms, driver->stream[DATA_STREAM]));
+    dScores *h_dScores = new dScores();
+    dScores *d_dScores = this;
 
-    scores = nullptr;
-    survival = nullptr;
-    topscore = nullptr;
-    cpsms = nullptr;
+    // copy pointers from the device
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_dScores, d_dScores, 1, driver->stream[DATA_STREAM]));
+
+    // free all memory
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(h_dScores->survival, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(h_dScores->topscore, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(h_dScores->cpsms, driver->stream[DATA_STREAM]));
+
+    driver->stream_sync(DATA_STREAM);
+
+    // free the host memory
+    delete h_dScores;
 }
 
 // -------------------------------------------------------------------------------------------- //
@@ -148,18 +174,18 @@ dQueries<T>::dQueries()
 // -------------------------------------------------------------------------------------------- //
 
 template <typename T>
-void dQueries<T>::H2D(Queries<T> &rhs)
+void dQueries<T>::H2D(Queries<T> *rhs)
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
-    int chunksize = rhs.numSpecs;
+    int chunksize = rhs->numSpecs;
     
-    this->numSpecs = rhs.numSpecs;
-    this->numPeaks = rhs.numPeaks;
+    this->numSpecs = rhs->numSpecs;
+    this->numPeaks = rhs->numPeaks;
 
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->idx, rhs.idx, chunksize, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->moz, rhs->moz, this->numPeaks, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->intensity, rhs->intensity, this->numPeaks, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->idx, rhs->idx, chunksize, driver->stream[DATA_STREAM]));
     //hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->precurse, rhs.precurse, chunksize, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->moz, rhs.moz, this->numPeaks, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->intensity, rhs.intensity, this->numPeaks, driver->stream[DATA_STREAM]));
 
     // driver->stream_sync(DATA_STREAM);
 }
@@ -207,46 +233,6 @@ dQueries<T>::~dQueries()
 
 // -------------------------------------------------------------------------------------------- //
 
-//
-// REMOVE ME: test if all constant data is intact
-//
-__global__ void test_kernel()
-{
-    if (threadIdx.x == 0)
-    {
-        for (int i = 0 ; i< ALPHABETS ; i++)
-        {
-            printf("ModMass[%d]: %f, ", i, modMass[i]);
-        }
-    }
-    if (threadIdx.x == 1)
-    {
-        for (int i = 0 ; i< ALPHABETS ; i++)
-        {
-            printf("aaMass[%d]: %f, ", i, aaMass[i]);
-        }
-    }
-    if (threadIdx.x == 2)
-    {
-        for (int i = 0 ; i< ALPHABETS ; i++)
-        {
-            printf("statMass[%d]: %f, ", i, statMass[i]);
-        }
-    }
-    if (threadIdx.x == 3)
-    {
-        for (int i = 0 ; i < hcp::utils::maxshp ; i++)
-        {
-            printf("d_lgFact[%d]: %f, ", i, d_lgFact[i]);
-        }
-    }
-
-    __syncthreads();
-
-}
-
-// -------------------------------------------------------------------------------------------- //
-
 __host__ status_t initialize()
 {
     // static instance of the log(factorial(x)) array
@@ -255,44 +241,74 @@ __host__ status_t initialize()
     // copy to CUDA constant arrays
     hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(d_lgFact, &h_lgfact.val, sizeof(double_t) * hcp::utils::maxshp)); 
 
-    // TODO: Remove this test kernel 
-    test_kernel<<<1,4>>>();
-
     return SLM_SUCCESS;
 
 }
 
 // -------------------------------------------------------------------------------------------- //
 
-__host__ void getHostMem(float *&h_hscores, float *&h_evalues)
+std::pair<BYC *, int>& getBYC(int chunksize)
 {
-    static thread_local float *h_hscores_ptr = h_hscores;
-    static thread_local float *h_evalues_ptr = h_evalues;
+    auto driver = hcp::gpu::cuda::driver::get_instance();
 
-    if (!h_hscores_ptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::host_pinned_allocate<float>(h_hscores_ptr, QCHUNK));
+    static std::pair<BYC *, int> bycPair;
+    static BYC *d_BYC = nullptr;
+    static int maxchunk = 0;
 
-    if (!h_evalues_ptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::host_pinned_allocate<float>(h_evalues_ptr, QCHUNK));
+    if (!d_BYC)
+    {
+        maxchunk = chunksize;
 
-    h_hscores = h_hscores_ptr;
-    h_evalues = h_evalues_ptr;
+        if (!maxchunk)
+            std::cout << "Error: getBYC: chunksize is zero" << std::endl;
+        else
+            hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async<BYC>(d_BYC, maxchunk * SEARCHINSTANCES, driver->stream[DATA_STREAM]));
+    }
+
+    driver->stream_sync(DATA_STREAM);
+
+    // update the pair
+    bycPair = make_pair(d_BYC, maxchunk);
+
+    // return the static pair
+    return bycPair;
 }
 
 // -------------------------------------------------------------------------------------------- //
 
-dScores *& getScorecard(int chunksize)
+void freeBYC()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
-    static thread_local dScores *d_Scores = nullptr;
+    
+    auto pBYC = getBYC();
+
+    auto d_BYC = std::get<0>(pBYC);
+    auto maxchunk = std::get<1>(pBYC);
+
+    if (d_BYC)
+        // free the d_Scores
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_BYC, driver->stream[DATA_STREAM]));
+
+    if (maxchunk)
+        maxchunk = 0;
+
+    driver->stream_sync(DATA_STREAM);
+
+    // set to nullptr
+    d_BYC = nullptr;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+dScores *& getScorecard()
+{
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+    static dScores *d_Scores = nullptr;
 
     if (!d_Scores)
-    {
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async<dScores>(d_Scores, SEARCHINSTANCES, driver->stream[DATA_STREAM]));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async<dScores>(d_Scores, 1, driver->stream[DATA_STREAM]));
 
-        for (int i = 0 ; i < SEARCHINSTANCES ; i++)
-            d_Scores[i].init(chunksize);
-    }
+    driver->stream_sync(DATA_STREAM);
 
     return d_Scores;
 }
@@ -303,37 +319,16 @@ void freeScorecard()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
     
-    auto d_Scores = getScorecard(0);
+    auto d_Scores = getScorecard();
 
-    // free the d_Scores
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_Scores, driver->stream[DATA_STREAM]));
+    if (d_Scores)
+        // free the d_Scores
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_Scores, driver->stream[DATA_STREAM]));
 
     driver->stream_sync(DATA_STREAM);
 
     // set to nullptr
     d_Scores = nullptr;
-}
-
-// -------------------------------------------------------------------------------------------- //
-
-__host__ void freeHostMem()
-{
-    float *h_hscores = nullptr;
-    float *h_evalues = nullptr;
-
-    getHostMem(h_hscores, h_evalues);
-    
-    if (h_hscores)
-    {
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::host_pinned_free(h_hscores));
-        h_hscores = nullptr;
-    }
-
-    if (h_evalues)
-    {
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::host_pinned_free(h_evalues));
-        h_evalues = nullptr;
-    }
 }
 
 // -------------------------------------------------------------------------------------------- //
@@ -363,80 +358,21 @@ __host__ void freedQueries()
 
 // -------------------------------------------------------------------------------------------- //
 
-__host__ void getDeviceMem(float *&d_hscores, float *&d_evalues)
-{
-    static auto driver = hcp::gpu::cuda::driver::get_instance();
-
-    static thread_local float *d_hscores_ptr = nullptr;
-    static thread_local float *d_evalues_ptr = nullptr;
-
-    if (!d_hscores_ptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async<float>(d_hscores_ptr, QCHUNK, driver->stream[DATA_STREAM]));
-
-    if (!d_evalues_ptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async<float>(d_evalues_ptr, QCHUNK, driver->stream[DATA_STREAM]));
-
-    d_hscores = d_hscores_ptr;
-    d_evalues = d_evalues_ptr;
-}
-
-// -------------------------------------------------------------------------------------------- //
-
-__host__ void freeDeviceMem()
-{
-    auto driver = hcp::gpu::cuda::driver::get_instance();
-
-    float *d_hscores = nullptr;
-    float *d_evalues = nullptr;
-
-    getDeviceMem(d_hscores, d_evalues);
-    
-    if (d_hscores)
-    {
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_hscores, driver->stream[DATA_STREAM]));
-        d_hscores = nullptr;
-    }
-
-    if (d_evalues)
-    {
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_evalues, driver->stream[DATA_STREAM]));
-        d_evalues = nullptr;
-    }
-}
-
-// -------------------------------------------------------------------------------------------- //
-
 // the database search kernel
-__host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idxchunks)
+__host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idxchunks, int gpucurrSpecID, hCell *CandidatePSMS)
 {
     status_t status = SLM_SUCCESS;
 
     auto dqueries = getdQueries();
 
     // transfer experimental data to device
-    dqueries->H2D(*gWorkPtr);
+    dqueries->H2D(gWorkPtr);
 
     // number of spectra in the current batch
-    int nspectra = gWorkPtr->numSpecs;
+    //int nspectra = gWorkPtr->numSpecs;
 
     // get instance of the driver
     static thread_local auto driver = hcp::gpu::cuda::driver::get_instance();
-
-    // host memory to store the top hyperscores and evalues
-    float *h_hscores = nullptr;
-    float *h_evalues = nullptr;
-
-    // allocate host memory for the top hyperscores and evalues
-    // FIXME: Enable later
-    //getHostMem(h_hscores, h_evalues);
-
-    // device memory for the top hyperscores and evalues
-    float *d_hscores = nullptr;
-    float *d_evalues = nullptr;
-
-    // allocate device memory
-    // FIXME: Enable later
-    //getDeviceMem(d_hscores, d_evalues);
 
     // sync all data streams
     driver->stream_sync(DATA_STREAM);
@@ -452,6 +388,7 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
         {
             // FIXME: make min-max limits for the spectra in the current chunk
             status = hcp::gpu::cuda::s3::MinMaxLimits(gWorkPtr, curr_index, params.dM);
+
             uint_t speclen = (curr_index->pepIndex.peplen - 1) * params.maxz * iSERIES;
 #if 1
             // build the AT columns. i.e. the iAPtr
@@ -468,32 +405,41 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
             uint_t *iAPtr = curr_index->ionIndex[chno].iA;
             uint_t iAsize = nsize * speclen;
 
-            hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_iA, iAPtr, iAsize, driver->stream[SEARCH_STREAM]));
+            hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_iA, iAPtr, iAsize, driver->stream[DATA_STREAM]));
 #endif // 1
 
             // copy the At rows to device 
             auto d_bA = hcp::gpu::cuda::s1::getbA();
             uint_t bAsize = ((uint_t)(params.max_mass * params.scale)) + 1;
 
-            hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_bA, curr_index->ionIndex[chno].bA, bAsize, driver->stream[SEARCH_STREAM]));
+            hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_bA, curr_index->ionIndex[chno].bA, bAsize, driver->stream[DATA_STREAM]));
 
             // synch both streams
-            driver->stream_sync(SEARCH_STREAM);
+            driver->stream_sync(DATA_STREAM);
 
             // search against the database
             status = hcp::gpu::cuda::s3::SearchKernel(gWorkPtr, speclen, i);
-            
+
             // free the AT columns
             hcp::gpu::cuda::s1::freeATcols();
         }
     }
 
-    // all chunks are done. combine the results
-    // FIXME: Enable later
-    //hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_evalues, d_evalues, nspectra, driver->stream[SEARCH_STREAM]));
-    //hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_hscores, d_hscores, nspectra, driver->stream[SEARCH_STREAM]));
+    hcp::gpu::cuda::s3::reset_dScores();
 
-    return SLM_SUCCESS;
+#ifdef USE_MPI
+
+    if (params.nodes > 1)
+        status = hcp::gpu::cuda::s4::getIResults(index, gWorkPtr, gpucurrSpecID, CandidatePSMS);
+    else
+#else
+        // unused param
+        UNUSED_PARAM(CandidatePSMS);
+        // combine the results
+        status = hcp::gpu::cuda::s4::processResults(index, gWorkPtr, gpucurrSpecID);
+#endif // USE_MPI
+
+    return status;
 }
 
 // -------------------------------------------------------------------------------------------- //
@@ -506,38 +452,46 @@ __host__ status_t MinMaxLimits(Queries<spectype_t> *h_WorkPtr, Index *index, dou
     auto d_WorkPtr = getdQueries();
 
     // extract all peptide masses in an array to simplify computations
-    float_t *h_mzs = new float_t[index->lcltotCnt];
-    // hcp::gpu::cuda::host_pinned_allocate<float_t>(h_mzs, index->lcltotCnt);
+    float_t *h_mzs; // = new float_t[index->lcltotCnt];
+    hcp::gpu::cuda::host_pinned_allocate<float_t>(h_mzs, index->lcltotCnt);
 
     // simplify the peptide masses
     for (int i = 0; i < index->lcltotCnt; i++)
-        h_mzs[i] = index->pepEntries[i].Mass - dM;
+        h_mzs[i] = index->pepEntries[i].Mass;
 
     auto size = index->lcltotCnt;
 
     // initialize device vector with mzs
     float *d_mzs = nullptr;
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_mzs, size, driver->stream[0]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_mzs, h_mzs, size, driver->stream[0]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_mzs, size, driver->stream[SEARCH_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_mzs, h_mzs, size, driver->stream[SEARCH_STREAM]));
 
-    // binary search the start of each ion and store in minlimits
-    thrust::lower_bound(thrust::device.on(driver->get_stream(0)), d_mzs, d_mzs + size, d_mzs, d_mzs + h_WorkPtr->numSpecs, d_WorkPtr->minlimits);
+    float *d_precurse = nullptr;
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_precurse, h_WorkPtr->numSpecs, driver->stream[SEARCH_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_precurse, h_WorkPtr->precurse, h_WorkPtr->numSpecs, driver->stream[SEARCH_STREAM]));
 
     const int nthreads = 1024;
-    int nblocks = size / 1024;
-    nblocks += (size % 1024 == 0)? 0 : 1;
+    int nblocks = h_WorkPtr->numSpecs / 1024;
+    nblocks += (h_WorkPtr->numSpecs % 1024 == 0)? 0 : 1;
 
-    // add + 2*dM to set for maxlimit
-    hcp::gpu::cuda::s3::vector_plus_constant<<<nblocks, nthreads, KBYTES(1), driver->get_stream()>>>(d_mzs, (float)(2*dM), size);
+    // add -dM to set for minlimit
+    hcp::gpu::cuda::s3::vector_plus_constant<<<nblocks, nthreads, KBYTES(1), driver->get_stream(SEARCH_STREAM)>>>(d_precurse, (float)(-dM), h_WorkPtr->numSpecs);
+
+    // binary search the start of each ion and store in minlimits
+    thrust::lower_bound(thrust::device.on(driver->get_stream(SEARCH_STREAM)), d_mzs, d_mzs + size, d_precurse, d_precurse + h_WorkPtr->numSpecs, d_WorkPtr->minlimits);
+
+    // add -dM to set for minlimit
+    hcp::gpu::cuda::s3::vector_plus_constant<<<nblocks, nthreads, KBYTES(1), driver->get_stream(SEARCH_STREAM)>>>(d_precurse, (float)(2*dM), h_WorkPtr->numSpecs);
 
     // binary search the end of each spectrum and store in maxlimits
-    thrust::upper_bound(thrust::device.on(driver->get_stream(0)), d_mzs, d_mzs + size, d_mzs, d_mzs + h_WorkPtr->numSpecs, d_WorkPtr->maxlimits);
+    thrust::upper_bound(thrust::device.on(driver->get_stream(SEARCH_STREAM)), d_mzs, d_mzs + size, d_precurse, d_precurse + h_WorkPtr->numSpecs, d_WorkPtr->maxlimits);
 
     // d_mzs is no longer needed - free
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_mzs, driver->stream[0]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_mzs, driver->stream[SEARCH_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_precurse, driver->stream[SEARCH_STREAM]));
 
     // free the mzs array
-    delete[] h_mzs;
+    hcp::gpu::cuda::host_pinned_free(h_mzs);
 
     return status;
 }
@@ -557,23 +511,27 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
     auto d_iA = hcp::gpu::cuda::s1::getATcols();
     auto d_bA = hcp::gpu::cuda::s1::getbA();
 
-    // device memory for the top hyperscores and evalues
-    float *d_hscores = nullptr;
-    float *d_evalues = nullptr;
-
     // get driver object
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
-    // get device memory
-    getDeviceMem(d_hscores, d_evalues);
 
     const int itersize = SEARCHINSTANCES;
 
     int niters = nspectra / itersize;
     niters += (nspectra % itersize == 0)? 0 : 1;
 
-    // get scorecard instance
-    auto d_Scores = hcp::gpu::cuda::s3::getScorecard(0);
+    // get resPtr instance
+    auto d_Scores = hcp::gpu::cuda::s3::getScorecard();
+
+    // get BYC scorecard
+    auto pBYC = hcp::gpu::cuda::s3::getBYC();
+
+    auto d_BYC = std::get<0>(pBYC);
+    auto maxchunk = std::get<1>(pBYC);
+
+    // fixme: remove me
+    //int *d_debug = nullptr;
+    //hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_debug, MBYTES(20), driver->stream[SEARCH_STREAM]));
 
     for (int iter = 0 ; iter < niters ; iter++)
     {
@@ -584,62 +542,137 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
         if (iter == niters - 1)
             nblocks = nspectra - iter * itersize;
 
-        // Sparse matrix Sparse matrix multiplication
-        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(48), driver->get_stream(0)>>>(d_WorkPtr, d_bA, d_iA, d_hscores, d_evalues,iter, d_Scores, params.dF, params.dM, speclen, params.max_mass, params.scale, ixx);
+        // set the shared memory to 48KB
+        cudaFuncSetAttribute(SpSpGEMM, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
+
+        // FIXME:: revert nblocks from 1 to nblocks    
+        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(48), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter, d_BYC, maxchunk, d_Scores, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
     }
 
     // synchronize the stream
-    driver->stream_sync(0);
+    driver->stream_sync(SEARCH_STREAM);
+
+    // fixme: remove me
+    //int szzzzz = (38911-31657+1);
+    //int *h_debug = new int[MBYTES(20)];
+    //hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_debug, d_debug, szzzzz * 4, driver->stream[SEARCH_STREAM]));
+
+    //driver->stream_sync(SEARCH_STREAM);
+
+    //for (int i = 0; i <= szzzzz; i++)
+    //{
+    //    if (h_debug[i*3 + 0])
+     //       std::cout << "i = " << i + 31657 << ", " << h_debug[i*3 + 0] << ", " << h_debug[i*3 + 1] << ", " << h_debug[i*3 + 2] << ", " << std::endl;
+    //}
+
+    // fixme: remove me
+/*     for (int i = 0; i < HISTOGRAM_SIZE; i++)
+    {
+        std::cout << "i = " << i << " : " << h_debug[i] << std::endl;
+    }
+
+    std::cout << std::endl;
+
+    std::cout << "topscore.hyperscore = " << h_debug[HISTOGRAM_SIZE] << std::endl;
+    std::cout << "topscore.psid = " << h_debug[HISTOGRAM_SIZE+1] << std::endl;
+    std::cout << "topscore.idxoffset = " << h_debug[HISTOGRAM_SIZE+2] << std::endl;
+    std::cout << "topscore.sharedions = " << h_debug[HISTOGRAM_SIZE+3] << std::endl; */
+
+    //hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_debug, driver->stream[SEARCH_STREAM]));
 
     return status;
 }
 
+__host__ void reset_dScores()
+{
+    auto d_Scores = hcp::gpu::cuda::s3::getScorecard();
+
+    // get driver object
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+
+    // reset the scorecard
+    hcp::gpu::cuda::s3::reset_dScores<<<256, 256, 0, driver->stream[SEARCH_STREAM]>>>(d_Scores);
+}
+
 // -------------------------------------------------------------------------------------------- //
 
-__global__ void SpSpGEMM(dQueries<spectype_t> *d_WorkPtr, uint_t* d_bA, uint_t *d_iA, float_t *d_hscores, float_t *d_evalues, int iter, dScores *d_Scores, int dF, double dM, int speclen, int maxmass, int scale, int ixx)
+__global__ void reset_dScores(dScores *d_Scores)
 {
-    // get the scorecard pointer
-    auto *resPtr = d_Scores + blockIdx.x;
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    int stride = blockDim.x * gridDim.x;
 
-    auto *bycPtr = resPtr->scores;
+    for (int ik = tid; ik < QCHUNK * HISTOGRAM_SIZE; ik+=stride)
+        d_Scores->survival[ik] = 0;
+
+    for (int ik = tid; ik < QCHUNK; ik+=stride)
+    {
+        d_Scores->cpsms[ik] = 0;
+        d_Scores->topscore[ik].hyperscore = 0;
+        d_Scores->topscore[ik].psid = 0;
+        d_Scores->topscore[ik].idxoffset = 0;
+        d_Scores->topscore[ik].sharedions = 0;
+    }
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+__global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *dQ_idx, int *dQ_minlimits, int *dQ_maxlimits, 
+                        uint_t* d_bA, uint_t *d_iA, int iter, BYC *bycP, int maxchunk, dScores *d_Scores, int dF, int speclen, 
+                        int maxmass, int scale, short min_shp, int ixx)
+{
+    dScores *resPtr = d_Scores;
+
+    BYC *bycPtr = &bycP[blockIdx.x * maxchunk];
 
     // get spectrum data
     int qnum = iter + blockIdx.x;
 
-    auto *QAPtr = d_WorkPtr->moz + d_WorkPtr->idx[qnum];
-    auto *iPtr = d_WorkPtr->intensity + d_WorkPtr->idx[qnum];
-    int qspeclen = d_WorkPtr->idx[qnum + 1] - d_WorkPtr->idx[qnum];
-
-    int minlimit = d_WorkPtr->minlimits[qnum];
-    int maxlimit = d_WorkPtr->maxlimits[qnum];
-
-    //
-    // for all ions +- dF, get the start/stt and end/ends ranges in the shared memory
-    // then only iterate over those ranges and update the scorecard
-    //
-    // how to write the hyperscores to the null distribution simultaneously? - reduce but how?
-    //
-#define MAXDF                          2
-
-    extern __shared__ int sharedmem[];
-
-    int *minions = sharedmem;
-    int *maxions = sharedmem + (2*MAXDF + 1) * QALEN;
-
-    // fixme Start
+    auto *survival = &resPtr->survival[qnum * HISTOGRAM_SIZE];
+    auto *cpsms = resPtr->cpsms + qnum;
+    auto *QAPtr = dQ_moz + dQ_idx[qnum];
+    auto *iPtr = dQ_intensity + dQ_idx[qnum];
+    int qspeclen = dQ_idx[qnum + 1] - dQ_idx[qnum];
     int halfspeclen = speclen / 2;
 
-    hcp::gpu::cuda::s3::compute_minmaxions(minions, maxions, QAPtr, d_bA, d_iA, dF, qspeclen, speclen, minlimit, maxlimit);
+    int minlimit = dQ_minlimits[qnum];
+    int maxlimit = dQ_maxlimits[qnum] - 1; // maxlimit = upper_bound - 1
 
+    // fixme: remove me
+    //printf("qnum=%d, minlimit=%d, maxlimit=%d, qspeclen=%d\n", qnum, minlimit, maxlimit, qspeclen);
+
+#define MAXDF                          2
+
+    __shared__ int minions[(2*MAXDF + 1) * QALEN];
+    __shared__  int maxions[(2*MAXDF + 1) * QALEN];
+
+    // setup shared memory here
+    __syncthreads();
+
+    // compute min and maxlimits for ions in minions and maxions
+    hcp::gpu::cuda::s3::compute_minmaxions(minions, maxions, QAPtr, d_bA, d_iA, dF, qspeclen, speclen, minlimit, maxlimit, maxmass, scale);
+
+    // fixme: remove me
+    //printf("qnum=%d, minlimit=%d, maxlimit=%d, qspeclen=%d\n", qnum, minions[threadIdx.x], maxions[threadIdx.x], qspeclen);
+
+    // iterate over all ions
     for (int k = 0; k < qspeclen; k++)
     {
         uint_t intn = iPtr[k];
         auto qion = QAPtr[k];
 
+        // ion +-dF
         for (auto bin = qion - dF; bin < qion + 1 + dF; bin++)
         {
-            int stt = minions[bin];
-            int ends = maxions[bin];
+            short binidx = k *(2*dF + 1) + dF - (qion - bin);
+
+            int off1 = minions[binidx];
+            int off2 = maxions[binidx];
+
+            int stt = d_bA[bin] +off1;
+            int ends = d_bA[bin] + off2;
+
+            //if (threadIdx.x == 0 && stt <= ends)
+                //printf("k=%d, bin=%d, stt=%d, ends=%d, ss1=%d\n", binidx, bin, off1, off2, d_bA[bin]);
 
             for (auto ion = stt + threadIdx.x; ion <= ends; ion+= blockDim.x)
             {
@@ -652,27 +685,59 @@ __global__ void SpSpGEMM(dQueries<spectype_t> *d_WorkPtr, uint_t* d_bA, uint_t *
                 int_t residue = (raw % speclen);
 
                 /* Either 0 or 1 */
-                int_t isY = residue / halfspeclen;
-                int_t isB = 1 - isY;
+                bool isY = residue / halfspeclen;
+                bool isB = !isY;
+
+                auto iYC = intn * isY;
+                auto iBC = intn * isB;
+
+                // fixme: remove me 
+                //if (isB)
+                    //printf("bin=%d, raw=%d, slen=%d, ppid=%d, intn=%d, isY=%d, isB=%d, iyc=%d, ibc=%d, binidx=%d, off1=%d, off2=%d, stt=%d, ends=%d\n", bin, raw, speclen, ppid, intn, isY, isB, iYC, iBC, binidx, off1, off2, stt, ends);
 
                 /* Get the map element */
-                auto *elmnt = bycPtr + ppid;
-
-                /* Update */
-                elmnt->bc += isB;
-                elmnt->ibc += intn * isB;
+                BYC *elmnt = bycPtr + ppid;
 
                 elmnt->yc += isY;
-                elmnt->iyc += intn * isY;
+                elmnt->bc += isB;
+                elmnt->iyc += iYC;
+                elmnt->ibc += iBC;
             }
+            __syncthreads();
         }
     }
 
-    __shared__ dhCell topscores[1024];
-    __shared__ int histogram[HISTOGRAM_SIZE];
+    // fixme: remove me 
+/*     for (int jj = minlimit + threadIdx.x; jj <= maxlimit; jj += blockDim.x)
+    {
+        BYC *elmnt = bycPtr + jj;
+        int idx = jj - minlimit;
+        debug[4*idx + 0] = elmnt->yc;
+        debug[4*idx + 1] = elmnt->bc;
+        debug[4*idx + 2] = elmnt->iyc;
+        debug[4*idx + 3] = elmnt->ibc;
+    } */
 
-    for (int i = 0; i < HISTOGRAM_SIZE; i++)
-        histogram[i] = 0;
+    //if (threadIdx.x ==0)
+        //printf("qnum=%d, minlimit=%d, maxlimit=%d, qspeclen=%d\n", qnum, minlimit, maxlimit, qspeclen);
+
+    // shared memory for topscores and the histogram
+    __shared__ int histogram[HISTOGRAM_SIZE];
+    __shared__ dhCell topscores[1024];
+    __shared__ int l_cpsms[1024];
+
+    for (int ij = threadIdx.x; ij < HISTOGRAM_SIZE; ij+=blockDim.x)
+        histogram[ij] = 0;
+
+    for (int ij = threadIdx.x; ij < 1024; ij+=blockDim.x)
+    {
+        l_cpsms[ij] = 0;
+        topscores[ij].hyperscore = 0;
+        topscores[ij].psid = 0;
+        topscores[ij].idxoffset = 0;
+        topscores[ij].sharedions = 0;
+
+    }
 
     __syncthreads();
 
@@ -683,8 +748,11 @@ __global__ void SpSpGEMM(dQueries<spectype_t> *d_WorkPtr, uint_t* d_bA, uint_t *
         ushort_t ycc = bycPtr[it].yc;
         ushort_t shpk = bcc + ycc;
 
+        // fixme: remove me 
+        //printf("tid:%d, it=%d, shpk=%d, ibc=%u, iyc=%u\n", threadIdx.x, it, shpk, bycPtr[it].ibc, bycPtr[it].iyc);
+
         /* Filter by the min shared peaks */
-        if (shpk >= 4) // FIXME:
+        if (shpk >= min_shp) 
         {
             /* Create a heap cell */
             dhCell cell;
@@ -695,16 +763,25 @@ __global__ void SpSpGEMM(dQueries<spectype_t> *d_WorkPtr, uint_t* d_bA, uint_t *
             /* Fill in the information */
             cell.hyperscore = h1 + log10f(1 + bycPtr[it].ibc) + log10f(1 + bycPtr[it].iyc) - 6;
 
+            // fixme: remove me 
+            //printf("tid:%d, it=%d, shpk=%d, hs=%f\n", threadIdx.x, it, bcc, ycc, shpk, cell.hyperscore);
+
+            //int ii = it-minlimit;
+            //debug[ii*3 + 0] = it;
+            //debug[ii*3 + 1] = shpk;
+            //debug[ii*3 + 2] = (int)(cell.hyperscore * 10 + 0.5);
+
             /* hyperscore < 0 means either b- or y- ions were not matched */
-            if (cell.hyperscore > 0)
+            if (cell.hyperscore > 0.01)
             {
                 // Update the histogram
-                atomicAdd(&histogram[threadIdx.x * HISTOGRAM_SIZE + (int)(cell.hyperscore * 10 + 0.5)], 1);
+                atomicAdd(&histogram[(int)(cell.hyperscore * 10 + 0.5)], 1);
 
                 cell.idxoffset = ixx;
                 cell.psid = it;
                 cell.sharedions = shpk;
-                // cell.fileIndex = dQueries->fileNum;
+
+                l_cpsms[threadIdx.x] +=1;
 
                 if (cell.hyperscore > topscores[threadIdx.x].hyperscore)
                 {
@@ -713,19 +790,30 @@ __global__ void SpSpGEMM(dQueries<spectype_t> *d_WorkPtr, uint_t* d_bA, uint_t *
                     topscores[threadIdx.x].idxoffset  = cell.idxoffset;
                     topscores[threadIdx.x].sharedions = cell.sharedions;
                 }
-
-                __syncthreads();
             }
         }
     }
 
     __syncthreads();
 
-    hcp::gpu::cuda::s3::getMaxdhCell(topscores, resPtr->topscore);
+    // get max dhcell
+    hcp::gpu::cuda::s3::getMaxdhCell(topscores, &resPtr->topscore[qnum]);
+
+    // get the cpsms
+    hcp::gpu::cuda::s4::ArraySum(l_cpsms, 1024, cpsms);
 
     // copy histogram to the global memory
     for (int ii = threadIdx.x; ii < HISTOGRAM_SIZE; ii+=blockDim.x)
-            resPtr->survival[ii] += histogram[HISTOGRAM_SIZE];
+            survival[ii] += histogram[ii];
+
+/*     // fixme: remove me
+    for (int o = threadIdx.x; o < HISTOGRAM_SIZE; o += blockDim.x)
+        debug[o] = survival[o];
+
+    debug[HISTOGRAM_SIZE] = (int)(resPtr->topscore->hyperscore* 10 + 0.5);
+    debug[HISTOGRAM_SIZE + 1] = (int)resPtr->topscore->psid;
+    debug[HISTOGRAM_SIZE+2] = (int)resPtr->topscore->idxoffset;
+    debug[HISTOGRAM_SIZE + 3] = (int)resPtr->topscore->sharedions; */
 
     // reset the bycPtr
     for (int f = minlimit + threadIdx.x; f <= maxlimit; f += blockDim.x)
@@ -744,10 +832,17 @@ __global__ void SpSpGEMM(dQueries<spectype_t> *d_WorkPtr, uint_t* d_bA, uint_t *
 template <typename T>
 __global__ void vector_plus_constant(T *vect, T val, int size)
 {
-    int i = threadIdx.x + blockIdx.x * blockDim.x;
-
-    if (i < size)
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < size; i += blockDim.x * gridDim.x)
         vect[i] += val;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+__global__ void assign_dScores(dScores *a, double_t *survival, dhCell *topscores, int *cpsms)
+{
+    a->survival = survival;
+    a->topscore = topscores;
+    a->cpsms = cpsms;
 }
 
 // -------------------------------------------------------------------------------------------- //
@@ -756,11 +851,13 @@ status_t deinitialize()
 {
     hcp::gpu::cuda::s1::freeFragIon();
     hcp::gpu::cuda::s1::freebA();
+    // FIXME: why cuda error here
+    // even if reallocate, then only one unit mem
     hcp::gpu::cuda::s1::freeATcols();
 
-    freeHostMem();
-    freeDeviceMem();
     freedQueries();
+
+    hcp::gpu::cuda::s4::freed_eValues();
 
     // sync all streams
     hcp::gpu::cuda::driver::get_instance()->all_streams_sync();

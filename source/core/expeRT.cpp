@@ -410,6 +410,10 @@ status_t expeRT::ModelTailFit(Results *rPtr)
         /* Slice off yyt between stt1 and end1 */
         p_x->Assign(yy + stt1, yy + end1 + 1);
 
+        // FIXME: remove me
+        //print2Vars(stt1, end1);
+        //printVar(hyp);
+
         /* Database size
          * vaa = accumulate(yy, yy + hyp + 1, 0); */
         vaa = rPtr->cpsms;
@@ -452,6 +456,9 @@ status_t expeRT::ModelTailFit(Results *rPtr)
             /* log10(s(x)) */
             std::transform(sx->begin(), sx->end(), sx->begin(), [](double_t& c) {   return log10(c);});
 
+            // FIXME:: Remove me
+            //sx->print();
+
             /* Offset markers */
             auto mark = 0;
             auto mark2 = 0;
@@ -493,11 +500,21 @@ status_t expeRT::ModelTailFit(Results *rPtr)
                 mark2 = sx->Size() - 1;
             }
 
+            //print2Vars((*sx)[0] + hgt * 0.22, (*sx)[0] + hgt*0.87);
+            //print2Vars(mark, mark2);
+
+            // FIXME:: Remove me
+            //sx->print();
+
+
             /* Make the x-axis */
             X->AddRange(stt+mark, stt+mark2);
 
             /* Make the y-axis */
             sx->clip(mark, mark2);
+
+            // FIXME:: Remove me
+            //sx->print();
 
             LinearFit<lwvector<double_t>>(*X, *sx, sx->Size(), mu_t, beta_t);
 
@@ -674,12 +691,52 @@ VOID expeRT::ResetPartialVectors()
 
 }
 
+std::array<short, 2> expeRT::StoreIResults(double *yy, int_t spec, int cpsms, ebuffer *ofs)
+{
+    status_t status = 0;
+
+    std::array<short, 2> minnext = {0, 0};
+
+    int_t curptr = spec * Xsamples * sizeof(ushort_t);
+
+    if (yy == NULL)
+    {
+        status = ERR_INVLD_PARAM;
+    }
+
+    if (status == SLM_SUCCESS)
+    {
+        /* Find the curve region */
+        auto ends = rargmax<double_t *>(yy, 0, SIZE - 1, 0.99);
+        auto stt = argmax<double_t *>(yy, 0, ends, 0.99);
+
+        for (auto ii = stt; ii <= ends; ii++)
+        {
+            ushort_t k = (yy[ii]);
+
+            /* Encode into 65500 levels */
+            if (cpsms > 65500)
+                k = (ushort_t)(((double_t)(k * 65500))/cpsms);
+
+            memcpy(ofs->ibuff + curptr, (const VOID *) &k, sizeof(k));
+            curptr += sizeof(k);
+        }
+
+        minnext[0] = stt;
+        minnext[1] = ends;
+
+        //rPtr->beta = rPtr->mu + Xsamples * sizeof(ushort_t);
+    }
+
+    return minnext;
+}
+
+
 status_t expeRT::StoreIResults(Results *rPtr, int_t spec, ebuffer *ofs)
 {
     status_t status = 0;
 
-    int_t curptr = spec * Xsamples
- * sizeof(ushort_t);
+    int_t curptr = spec * Xsamples * sizeof(ushort_t);
     yy = rPtr->survival;
 
     if (yy == NULL)
@@ -726,8 +783,7 @@ status_t expeRT::Reconstruct(ebuffer *ebs, int_t specno, partRes *fR)
 
     pN += fR->N;
 
-    char_t *buffer = ebs->ibuff + (specno * (Xsamples
- * 2));
+    char_t *buffer = ebs->ibuff + (specno * (Xsamples * 2));
 
     for (auto jj = min; jj <= max2; jj++)
     {

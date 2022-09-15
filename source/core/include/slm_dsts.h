@@ -287,21 +287,13 @@ typedef struct _pepEntry
  * their summed intensities for a given experimental spectrum
  * against all the candidate peptides.
  */
-typedef struct _BYC
+struct BYC
 {
     short_t      bc; // b ion count
     short_t      yc; // y ion count
     long_t      ibc; // b ion intensities
     long_t      iyc; // y ion intensities
-
-    _BYC()
-    {
-        bc = 0;
-        yc = 0;
-        ibc = 0;
-        iyc = 0;
-    }
-} BYC;
+};
 
 typedef struct _SLMchunk
 {
@@ -1050,3 +1042,15 @@ typedef struct _ebuffer
     }
 
 } ebuffer;
+
+#if defined (USE_GPU)
+
+struct dhCell
+{
+    float hyperscore;
+    int psid;
+    ushort_t idxoffset;
+    ushort_t sharedions;
+};
+
+#endif // USE_GPU

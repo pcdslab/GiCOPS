@@ -242,6 +242,19 @@ float_t UTILS_CalculatePepMass(AA *seq, uint_t len)
  * OUTPUT:
  * @status: Status of execution
  */
+
+status_t UTILS_SetParams(gParams *params)
+{
+#if defined(USE_GPU)
+
+    if (params->useGPU)
+        // init mods info on GPU as well
+        hcp::gpu::cuda::s1::initParams(params);
+
+#endif // USE_GPU
+    return SLM_SUCCESS;
+}
+
 status_t UTILS_InitializeModInfo(SLM_vMods *vMods)
 {
     // initialize mod info on CPU
@@ -438,27 +451,5 @@ float_t UTILS_GenerateModSpectrum(char_t *seq, uint_t len, uint_t *Spectrum, mod
     }
 
     return mass;
-}
-
-/*
- * FUNCTION: __wrap_memcpy
- *
- * DESCRIPTION: Wrapper function for memcpy@GLIBC2.2.5
- *
- * INPUT:
- * @dest: destination ptr
- * @src : source ptr
- * @size: size in bytes
- *
- * OUTPUT: none
- */
-extern "C"
-{
-#if __GNUC__ < 5
-/* some systems do not have newest memcpy@GLIBC_2.14 - stay with v2.2.5 */
-asm (".symver memcpy, memcpy@GLIBC_2.2.5");
-#endif /* __GNUC__ */
-
-void *__wrap_memcpy(void *dest, const void *src, size_t n) { return memcpy(dest, src, n); }
 }
 

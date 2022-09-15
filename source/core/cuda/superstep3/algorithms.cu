@@ -37,32 +37,30 @@ namespace s3
 __device__ void lower_bound(uint_t *data, int size, int *lbound, int t)
 {
     int n = size;
-    *lbound = -1;
-
+ 
     // if there are no elements in nums
     if(n==0 || data[n-1] < t)
-        return;
+        *lbound = n;
     else if (data[0] >= t)
-    {
         *lbound = 0;
-        return;
-    }
-
-    // initialized low(l), and high(r)
-    int l=0;
-    int r = n-1;
-    int m = l + (r-l)/2;
-
-    while(l <= r)
+    else
     {
-        m = l + (r-l)/2;
-        if(data[m]>=t)
-            r = m-1;
-        else
-            l = m+1;
-    }
+        // initialized low(l), and high(r)
+        int l=0;
+        int r = n-1;
+        int m = l + (r-l)/2;
 
-    *lbound = l;
+        while(l <= r)
+        {
+            m = l + (r-l)/2;
+            if(data[m]>=t)
+                r = m-1;
+            else
+                l = m+1;
+        }
+
+        *lbound = l;
+    }
 
     return;
 }
@@ -70,54 +68,62 @@ __device__ void lower_bound(uint_t *data, int size, int *lbound, int t)
 __device__ void upper_bound(uint_t *data, int size, int *ubound, int t)
 {
     int n = size;
-    *ubound = -1;
 
     // if there are no elements in nums
     if(n==0 || data[0] > t)
-        return;
+        *ubound = -1;
     else if (data[n-1] <= t)
-    {
         *ubound = n-1;
-        return;
-    }
-
-    // initialized low(l), and high(r)
-    int l=0;
-    int r = n-1;
-    int m = l + (r-l)/2;
-
-    while(l <= r)
+    else
     {
-        m = l + (r-l)/2;
-        if(data[m]<=t)
-            l = m+1;
-        else
-            r = m-1;
-    }
+        // initialized low(l), and high(r)
+        int l=0;
+        int r = n-1;
+        int m = l + (r-l)/2;
 
-    *ubound = r;
+        while(l <= r)
+        {
+            m = l + (r-l)/2;
+            if(data[m]<=t)
+                l = m+1;
+            else
+                r = m-1;
+        }
+
+        *ubound = r;
+    }
 
     return;
 }
 
-__device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint *d_bA, uint *d_iA, int dF, int qspeclen, int speclen, int minlimit, int maxlimit)
+__device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint *d_bA, uint *d_iA, int dF, int qspeclen, int speclen, int minlimit, int maxlimit, int maxmass, int scale)
 {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    short bucket = (2*dF+1);
 
-    int irange = qspeclen * (2*dF+1);
+    int lbound = 0;
+    int ubound = -1;
 
-    // fixme
-    int maxmass = 5000;
-    int scale = 100;
+    // total ions with mass +-dF
+    int irange = qspeclen * bucket;
 
-    for (int ion = 0; ion < irange ; ion += blockDim.x)
+    // for all ions
+    for (int ion = tid; ion < irange ; ion += blockDim.x)
     {
-        auto myion = QAPtr[tid/(2*dF+1)];
-        int myion_offset = (ion % (2*dF+1)) - dF;
+        // main ion
+        auto myion = QAPtr[ion/bucket];
+        // dF offset
+        int myion_offset = (ion % bucket) - dF;
 
+        // new ion mass
         auto qion = myion + myion_offset;
 
-        if (qion > dF && qion < ((maxmass * scale) - 1 - dF))
+        int maxionmass = ((maxmass * scale) - 1 - dF);
+
+        //printf("tid: %d, qion: %d\n", tid, qion);
+
+        // check for legal ion mass
+        if (qion > dF && qion < maxionmass)
         {
             // locate iAPtr start and end
             uint_t *data_ptr = d_iA + d_bA[qion];
@@ -127,25 +133,41 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
             if (data_size < 1)
                 continue;
 
-            int *lbound = minions + tid;
-            int *ubound = maxions + tid;
+/*             int *lbound = minions + ion;
+            int *ubound = maxions + ion; */
 
+            // lowerbound limit
             int target = minlimit * speclen;
 
-            lower_bound(data_ptr, data_size, lbound, target);
+            //printf("tid: %d, target: %d, iAbound: %d, lbound: %d, data_size: %d\n", tid, target, data_ptr[*lbound], *lbound, data_size);
 
+            // compute lower bound
+            lower_bound(data_ptr, data_size, &lbound, target);
+
+            //printf("tid: %d, lbound: %d, data_size: %d\n", tid, *lbound, data_size);
+
+            //printf("tid: %d, target: %d, iAbound: %d, iAbound-1: %d, iAbound+1: %d, lbound: %d, data_size: %d\n", tid, target, data_ptr[*lbound], data_ptr[*lbound-1], data_ptr[*lbound+1], *lbound, data_size);
+
+            // upperbound limit
             target = (((maxlimit + 1) * speclen) - 1);
-            upper_bound(data_ptr, data_size, ubound, target);
 
-        }
-        else
-        {
-            minions[tid] = -1;
-            maxions[tid] = -1;
+            upper_bound(data_ptr, data_size, &ubound, target);
+
+            //if (lbound == ubound)
+                //printf("tid: %d, lb: %d, ub: %d, iAl: %d, iAu:%d, tl: %d, tu: %d\n", tid, lbound, ubound, data_ptr[lbound], data_ptr[ubound], minlimit * speclen, target);
         }
     }
 
+    for (int a = tid; a < irange; a+=blockDim.x)
+    {
+        minions[a] = lbound;
+        maxions[a] = ubound;
+    }
+
     __syncthreads();
+
+    return;
+
 }
 
 __device__ void getMaxdhCell(dhCell *topscores, dhCell *out)

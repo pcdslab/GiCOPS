@@ -257,6 +257,8 @@ status_t UTILS_InitializeModInfo(string_t);
  */
 status_t UTILS_InitializeModInfo(SLM_vMods *);
 
+status_t UTILS_SetParams(gParams *params);
+
 /*
  * FUNCTION: UTILS_CalculateModMass
  *

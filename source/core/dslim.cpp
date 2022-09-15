@@ -448,7 +448,7 @@ status_t DSLIM_InitializeScorecard(Index *index, uint_t idxs)
 #if defined (USE_GPU)
 
     if (params.useGPU)
-        hcp::gpu::cuda::s3::getScorecard(sAize);
+        hcp::gpu::cuda::s3:: getBYC(sAize);
 
 #endif // USE_GPU
     return status;
@@ -795,8 +795,13 @@ status_t DSLIM_DeallocateSC()
 #if defined (USE_GPU)
 
     if (params.useGPU)
+    {
+        // free the BYC scorecard memory on GPU
+        hcp::gpu::cuda::s3::freeBYC();
+
         // free the Scorecard memory on GPU
         hcp::gpu::cuda::s3::freeScorecard();
+    }
 
 #endif // USE_GPU
 

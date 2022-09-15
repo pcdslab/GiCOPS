@@ -26,6 +26,11 @@
 
 const int SEARCHINSTANCES = 128;
 
+const int SEARCH_STREAM = 0;
+const int DATA_STREAM = 1;
+
+const int HISTOGRAM_SIZE = (1 + (MAX_HYPERSCORE * 10) + 1);
+
 namespace hcp
 {
 
@@ -55,7 +60,7 @@ struct dQueries
 
     dQueries();
     ~dQueries();
-    void H2D(Queries<T> &rhs);
+    void H2D(Queries<T> *rhs);
 
     void reset()
     {
@@ -65,33 +70,29 @@ struct dQueries
 
 };
 
-struct dhCell
-{
-    float hyperscore;
-    int psid;
-    ushort_t idxoffset;
-    ushort_t sharedions;
-};
-
 struct dScores
 {
-    BYC        *scores;
     double_t *survival;
     dhCell    *topscore;
     int      *cpsms;
 
-    dScores() = default;
+    dScores();
     ~dScores();
-    void init(int size);
 };
 
-dScores *&getScorecard(int chunksize);
+dScores *&getScorecard();
+
+std::pair<BYC *, int>& getBYC(int chunksize=0);
+
+void reset_dScores();
 
 void freeScorecard();
 
+void freeBYC();
+
 status_t initialize();
 
-status_t search(Queries<spectype_t> *, Index *, uint_t);
+status_t search(Queries<spectype_t> *, Index *, uint_t, int, hCell *CandidatePSMS = nullptr);
 
 status_t deinitialize();
 

@@ -95,11 +95,11 @@
 #define AAidx(x)                 (x - 'A')
 
 // Mass of water and H+
-#define H2O                      18.015f
-#define PROTON                   1.00727647f
+constexpr float H2O = 18.015f;
+constexpr float PROTON = 1.00727647f;
 
 // Not an Amino Acid (NAA)
-#define NAA                      -20000
+constexpr float NAA = -20000;
 
 // data type to use for storing and retriving preprocessed spectra
 // valid options are: int (default) and float

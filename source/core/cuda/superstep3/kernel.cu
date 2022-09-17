@@ -390,13 +390,14 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
             status = hcp::gpu::cuda::s3::MinMaxLimits(gWorkPtr, curr_index, params.dM);
 
             uint_t speclen = (curr_index->pepIndex.peplen - 1) * params.maxz * iSERIES;
-#if 1
+
+#if 1       // TODO: Leave this or remove this
+
             // build the AT columns. i.e. the iAPtr
             status = hcp::gpu::cuda::s1::ConstructIndexChunk(curr_index, chno, true);
             auto d_iA = hcp::gpu::cuda::s1::getATcols();
+
 #else
-            // copy the At columns to the device instead
-            auto d_iA = hcp::gpu::cuda::s1::getATcols(iAsize);
 
             /* Check if this chunk is the last chunk */
             uint_t nsize = ((chno == curr_index->nChunks - 1) && (curr_index->nChunks > 1))?
@@ -404,6 +405,9 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
 
             uint_t *iAPtr = curr_index->ionIndex[chno].iA;
             uint_t iAsize = nsize * speclen;
+
+            // copy the At columns to the device instead
+            auto d_iA = hcp::gpu::cuda::s1::getATcols(iAsize);
 
             hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_iA, iAPtr, iAsize, driver->stream[DATA_STREAM]));
 #endif // 1

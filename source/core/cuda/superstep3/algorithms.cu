@@ -98,7 +98,7 @@ __device__ void upper_bound(uint_t *data, int size, int *ubound, int t)
 
 __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint *d_bA, uint *d_iA, int dF, int qspeclen, int speclen, int minlimit, int maxlimit, int maxmass, int scale)
 {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int tid = threadIdx.x;
     short bucket = (2*dF+1);
 
     int lbound = 0;
@@ -118,12 +118,12 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
         // new ion mass
         auto qion = myion + myion_offset;
 
-        int maxionmass = ((maxmass * scale) - 1 - dF);
+        int maxionmass = (maxmass * scale) - 1 - dF;
 
         //printf("tid: %d, qion: %d\n", tid, qion);
 
         // check for legal ion mass
-        if (qion > dF && qion < maxionmass)
+        if (myion > dF && myion <= maxionmass)
         {
             // locate iAPtr start and end
             uint_t *data_ptr = d_iA + d_bA[qion];
@@ -157,6 +157,8 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
                 //printf("tid: %d, lb: %d, ub: %d, iAl: %d, iAu:%d, tl: %d, tu: %d\n", tid, lbound, ubound, data_ptr[lbound], data_ptr[ubound], minlimit * speclen, target);
         }
     }
+
+    __syncthreads();
 
     for (int a = tid; a < irange; a+=blockDim.x)
     {

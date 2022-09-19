@@ -160,7 +160,7 @@ dQueries<T>::dQueries()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(this->idx, QCHUNK, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(this->idx, QCHUNK+1, driver->stream[DATA_STREAM]));
     //hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(this->precurse, QCHUNK, driver->stream[DATA_STREAM]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(this->minlimits, QCHUNK, driver->stream[DATA_STREAM]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(this->maxlimits, QCHUNK, driver->stream[DATA_STREAM]));
@@ -184,7 +184,7 @@ void dQueries<T>::H2D(Queries<T> *rhs)
 
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->moz, rhs->moz, this->numPeaks, driver->stream[DATA_STREAM]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->intensity, rhs->intensity, this->numPeaks, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->idx, rhs->idx, chunksize, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->idx, rhs->idx, chunksize+1, driver->stream[DATA_STREAM]));
     //hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(this->precurse, rhs.precurse, chunksize, driver->stream[DATA_STREAM]));
 
     // driver->stream_sync(DATA_STREAM);
@@ -383,14 +383,15 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
         // get the current index portion (by length)
         Index *curr_index = &index[i];
 
+        // FIXME: make min-max limits for the spectra in the current chunk
+        status = hcp::gpu::cuda::s3::MinMaxLimits(gWorkPtr, curr_index, params.dM);
+
+        uint_t speclen = (curr_index->pepIndex.peplen - 1) * params.maxz * iSERIES;
+
         // construct for each intra-chunk (within each length)
         for (int chno = 0; chno < index->nChunks && status == SLM_SUCCESS; chno++)
         {
-            // FIXME: make min-max limits for the spectra in the current chunk
-            status = hcp::gpu::cuda::s3::MinMaxLimits(gWorkPtr, curr_index, params.dM);
-
-            uint_t speclen = (curr_index->pepIndex.peplen - 1) * params.maxz * iSERIES;
-
+    
 #if 1       // TODO: Leave this or remove this
 
             // build the AT columns. i.e. the iAPtr
@@ -535,6 +536,9 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
     //int *d_debug = nullptr;
     //hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_debug, MBYTES(20), driver->stream[SEARCH_STREAM]));
 
+    // set the shared memory to 48KB
+    cudaFuncSetAttribute(SpSpGEMM, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
+
     for (int iter = 0 ; iter < niters ; iter++)
     {
         int nblocks = itersize;
@@ -544,10 +548,6 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
         if (iter == niters - 1)
             nblocks = nspectra - iter * itersize;
 
-        // set the shared memory to 48KB
-        cudaFuncSetAttribute(SpSpGEMM, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
-
-        // FIXME:: revert nblocks from 1 to nblocks    
         hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(48), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter, d_BYC, maxchunk, d_Scores, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
     }
 
@@ -557,7 +557,7 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
     // fixme: remove me
     //int szzzzz = (38911-31657+1);
     //int *h_debug = new int[MBYTES(20)];
-    //hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_debug, d_debug, szzzzz * 4, driver->stream[SEARCH_STREAM]));
+    //hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_debug, d_debug, 1024, driver->stream[SEARCH_STREAM]));
 
     //driver->stream_sync(SEARCH_STREAM);
 
@@ -593,7 +593,9 @@ __host__ void reset_dScores()
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
     // reset the scorecard
-    hcp::gpu::cuda::s3::reset_dScores<<<256, 256, 0, driver->stream[SEARCH_STREAM]>>>(d_Scores);
+    hcp::gpu::cuda::s3::reset_dScores<<<256, 256, KBYTES(1), driver->stream[SEARCH_STREAM]>>>(d_Scores);
+
+    driver->stream_sync(SEARCH_STREAM);
 }
 
 // -------------------------------------------------------------------------------------------- //
@@ -743,6 +745,8 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
 
     __syncthreads();
 
+    //printf("Debug Pt1 reached by tid = %d\n", threadIdx.x);
+
     /* Look for candidate PSMs */
     for (int_t it = minlimit + threadIdx.x; it <= maxlimit; it+= blockDim.x)
     {
@@ -798,6 +802,8 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
 
     __syncthreads();
 
+    //printf("Debug Pt2 reached by tid = %d\n", threadIdx.x);
+
     // get max dhcell
     hcp::gpu::cuda::s3::getMaxdhCell(topscores, &resPtr->topscore[qnum]);
 
@@ -851,11 +857,11 @@ __global__ void assign_dScores(dScores *a, double_t *survival, dhCell *topscores
 
 status_t deinitialize()
 {
+    hcp::gpu::cuda::s1::freeATcols();
     hcp::gpu::cuda::s1::freeFragIon();
     hcp::gpu::cuda::s1::freebA();
     // FIXME: why cuda error here
     // even if reallocate, then only one unit mem
-    hcp::gpu::cuda::s1::freeATcols();
 
     freedQueries();
 

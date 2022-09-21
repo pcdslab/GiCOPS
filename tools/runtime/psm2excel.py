@@ -52,7 +52,7 @@ if __name__ == '__main__':
         output = args.ofile.lstrip(' ')
     else:
         t = time.localtime()
-        current_time = time.strftime("%H.%M.%S", t)
+        current_time = time.strftime("%m.%d.%Y.%H.%M.%S.%H.%M.%S", t)
         output = data_dir + '/results.' + current_time + '.xlsx'
 
     # Open the TSV files
@@ -64,7 +64,7 @@ if __name__ == '__main__':
         sys.exit (-1)
         
     # Get all files with TSV
-    tsv_files = glob.glob(data_dir + '/*.tsv')
+    tsv_files = glob.glob(data_dir + '[!results]*.tsv')
     #print (tsv_files)
 
     #
@@ -82,7 +82,7 @@ if __name__ == '__main__':
             matrix.append(dat)
     else:
         print ("No TSV files found in: ", data_dir)
-        sys.exit(-2)
+        sys.exit(0)
 
     # Construct data frame
     print ("Constructing DataFrame...")

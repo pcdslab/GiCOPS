@@ -59,7 +59,7 @@ namespace s4
 __global__ void logWeibullFit(dScores_t *d_Scores, double *evalues, short min_cpsm);
 
 // tail fit method
-__global__ void TailFit(dScores_t *d_Scores, double *evalues);
+__global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *evalues);
 
 // alternate tail fit method
 __global__ void TailFit(double_t *data, float_t *hyp, int *cpsms, double *evalues);
@@ -80,7 +80,7 @@ template <typename T>
 extern __device__ void Assign(T *p_x, T *beg, T *end);
 
 template <typename T>
-extern __device__ void partialSum(T *beg, T *end, T *out);
+extern __device__ void prefixSum(T *beg, T *end, T *out);
 
 template <typename T>
 extern __device__ void XYbar(T *x, T *y, int n, double &xbar, double &ybar);
@@ -120,196 +120,23 @@ __host__ void freed_eValues()
 // -------------------------------------------------------------------------------------------- //
 
 // tail fit method
-__global__ void TailFit(dScores_t *d_Scores, double *evalues)
+__global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *evalues)
 {
     // each block will process one result
     int tid = threadIdx.x;
     int bid = blockIdx.x;
 
     /* Assign to internal variables */
-    auto yy = d_Scores[bid].survival;
+    double *yy = &survival[bid * HISTOGRAM_SIZE];
 
     // make sure the hyp is scaled to int here
-    int hyp = (d_Scores[bid].topscore->hyperscore * 10 + 0.5);
+    int hyp = (topscore[bid].hyperscore * 10 + 0.5);
 
-    double p_x_mem[HISTOGRAM_SIZE];
-    double s_x_mem[HISTOGRAM_SIZE];
-    double x_axis_mem[HISTOGRAM_SIZE];
+    extern __shared__ double shmem[];
 
-    double *p_x = &p_x_mem[0];
-    double *sx = &s_x_mem[0];
-    double *X = &x_axis_mem[0];
-
-    double mu = 0.0;
-    double beta = 4.0;
-
-    short stt1 = 0;
-    short stt =  0;
-    short end1 = HISTOGRAM_SIZE - 1;
-    //short ends = HISTOGRAM_SIZE - 1;
-
-    /* Find the curve region */
-    hcp::gpu::cuda::s4::rargmax<double_t>(yy, 0, hyp-1, 1.0, end1);
-    hcp::gpu::cuda::s4::argmax<double_t>(yy, 0, end1, 1.0, stt1);
-
-    /* To handle special cases */
-    if (stt1 == end1)
-    {
-        stt1 = end1;
-        end1 += 1;
-    }
-
-    /* Slice off yyt between stt1 and end1 */
-    hcp::gpu::cuda::s4::Assign<double>(p_x, yy + stt1, yy + end1 + 1);
-
-    /* Database size
-     * vaa = accumulate(yy, yy + hyp + 1, 0); */
-    int vaa = d_Scores[bid].cpsms[tid];
-
-    /* Check if no distribution data except for hyp */
-    if (vaa < 1)
-    {
-        mu = 0;
-        beta = 100;
-        stt = stt1;
-        //ends = end1;
-    }
-    else
-    {
-        /* Filter p_x again */
-        //ends = end1;
-        stt = stt1;
-
-        int p_x_size = end1 - stt1 + 1;
-
-        /* Compute survival function s(x) */
-        hcp::gpu::cuda::s4::Assign(sx, p_x, p_x + p_x_size);
-
-        /* cumulative_sum(sx) */
-        hcp::gpu::cuda::s4::partialSum(p_x, p_x + p_x_size, sx);
-
-        /* Adjust for negatives */
-        short replacement = 0;
-
-        short sx_size = end1 - stt1 + 1;
-        short sx_size_1 = sx_size - 1;
-        hcp::gpu::cuda::s4::rargmax<double_t>(sx, (short)0, sx_size_1, (double)(1e-4), replacement);
-
-        /* Survival function s(x) */
-        for (int j = tid; j < end1 - stt1 + 1; j+=blockDim.x)
-        {
-            // divide by vaa
-            sx[j] /= vaa;
-            // s(x) = -(s(x) - 1) = 1 - s(x)
-            sx[j] = 1 - sx[j];
-
-            // take care of the case where s(x) > 1
-            if (sx[j] > 1)
-                sx[j] = 0.999;
-            // take care of the case where s(x) < 0
-            else if (sx[j] < 0)
-                sx[j] = sx[replacement];
-
-            // log10(s(x))
-            sx[j] = log(sx[j]);
-        }
-
-        __syncthreads();
-
-        /* Offset markers */
-        short mark = 0;
-        short mark2 = 0;
-        auto hgt = sx[sx_size - 1] - sx[0];
-
-        /* If length > 4, then find thresholds */
-        if (sx_size > 3)
-        {
-            hcp::gpu::cuda::s4::largmax<double_t>(sx, 0, sx_size-1, sx[0] + hgt * 0.22, mark);
-            mark -= 1;
-            hcp::gpu::cuda::s4::rargmax<double_t>(sx, 0, sx_size-1, sx[0] + hgt*0.87, mark2);
-
-            if (mark2 == sx_size)
-            {
-                mark2 -= 1;
-            }
-
-            /* To handle special cases */
-            if (mark >= mark2)
-            {
-                mark = mark2 - 1;
-            }
-        }
-        /* If length < 4 business as usual */
-        else if (sx_size == 3)
-        {
-            /* Mark the start of the regression point */
-            hcp::gpu::cuda::s4::largmax<double_t>(sx, 0, sx_size-1, (sx[0] + hgt * 0.22), mark);
-            mark -= 1;
-            mark2 = sx_size - 1;
-
-            /* To handle special cases */
-            if (mark >= mark2)
-            {
-                mark = mark2 - 1;
-            }
-        }
-        else
-        {
-            mark = 0;
-            mark2 = sx_size - 1;
-        }
-
-        __syncthreads();
-
-
-        for (int jj = stt + tid; jj <= stt + mark2; jj+=blockDim.x)
-            // X->AddRange(mark, mark2);
-            X[jj - stt] = jj;
-
-        __syncthreads();
-
-        for (int jj = tid; jj <= (mark2-mark); jj+=blockDim.x)
-            // sx->clip(mark, mark2);
-            sx[jj] = sx[jj+mark];
-
-        __syncthreads();
-
-        hcp::gpu::cuda::s4::LinearFit<double_t>(X, sx, sx_size, &mu, &beta);
-
-        //std::cout << "y = " << mu_t << "x + " << beta_t << std::endl;
-        //std::cout << "eValue: " << pow(10, hyp * mu_t + beta_t) * vaa << std::endl;
-    }
-
-    /* Estimate the log(s(x)) */
-    double_t lgs_x = (mu * hyp) + beta;
-
-    /* Compute the e(x) = n * s(x) = n * 10^(lg(s(x))) */
-    evalues[bid] = d_Scores[bid].cpsms[tid] * pow(10.0, lgs_x);
-
-}
-
-// -------------------------------------------------------------------------------------------- //
-
-// tail fit method
-__global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues)
-{
-    // each block will process one result
-    int tid = threadIdx.x;
-    int bid = blockIdx.x;
-
-    /* Assign to internal variables */
-    auto yy = &data[HISTOGRAM_SIZE * bid];
-
-    // make sure the hyp is scaled to int here
-    int hyp = hyps[bid] * 10 + 0.5;
-
-    double p_x_mem[HISTOGRAM_SIZE];
-    double s_x_mem[HISTOGRAM_SIZE];
-    double x_axis_mem[HISTOGRAM_SIZE];
-
-    double *p_x = &p_x_mem[0];
-    double *sx = &s_x_mem[0];
-    double *X = &x_axis_mem[0];
+    double *p_x = &shmem[0];
+    double *sx = &shmem[HISTOGRAM_SIZE];
+    double *X = &shmem[2*HISTOGRAM_SIZE];
 
     double mu = 0.0;
     double beta = 4.0;
@@ -357,20 +184,20 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
         hcp::gpu::cuda::s4::Assign(sx, p_x, p_x + p_x_size);
 
         /* cumulative_sum(sx) */
-        hcp::gpu::cuda::s4::partialSum(p_x, p_x + p_x_size, sx);
-
-        /* Adjust for negatives */
-        short replacement = 0;
+        hcp::gpu::cuda::s4::prefixSum(p_x, p_x + p_x_size, sx);
 
         short sx_size = end1 - stt1 + 1;
         short sx_size_1 = sx_size - 1;
+
+        /* Adjust for negatives */
+        short replacement = 0;
         hcp::gpu::cuda::s4::rargmax<double_t>(sx, (short)0, sx_size_1, (double)(1e-4), replacement);
 
         /* Survival function s(x) */
-        for (int j = tid; j < end1 - stt1 + 1; j+=blockDim.x)
+        for (int j = tid; j < sx_size; j+=blockDim.x)
         {
             // divide by vaa
-            sx[j] /= vaa;
+            sx[j] = sx[j]/vaa;
             // s(x) = -(s(x) - 1) = 1 - s(x)
             sx[j] = 1 - sx[j];
 
@@ -380,9 +207,14 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
             // take care of the case where s(x) < 0
             else if (sx[j] < 0)
                 sx[j] = sx[replacement];
+        }
 
-            // log10(s(x))
-            sx[j] = log(sx[j]);
+        __syncthreads();
+
+        for (int ij = tid; ij < sx_size; ij += blockDim.x)
+        {
+            auto myVal = log10f(sx[ij]);
+            sx[ij] = myVal;
         }
 
         __syncthreads();
@@ -390,14 +222,16 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
         /* Offset markers */
         short mark = 0;
         short mark2 = 0;
-        auto hgt = sx[sx_size - 1] - sx[0];
+        double hgt = sx[sx_size_1] - sx[0];
+        auto hgt_22 = sx[0] + hgt * 0.22;
+        auto hgt_87 = sx[0] + hgt * 0.87;
 
         /* If length > 4, then find thresholds */
         if (sx_size > 3)
         {
-            hcp::gpu::cuda::s4::largmax<double_t>(sx, 0, sx_size-1, sx[0] + hgt * 0.22, mark);
+            hcp::gpu::cuda::s4::largmax<double_t>(sx, 0, sx_size_1, hgt_22, mark);
             mark -= 1;
-            hcp::gpu::cuda::s4::rargmax<double_t>(sx, 0, sx_size-1, sx[0] + hgt*0.87, mark2);
+            hcp::gpu::cuda::s4::rargmax<double_t>(sx, 0, sx_size_1, hgt_87, mark2);
 
             if (mark2 == sx_size)
             {
@@ -414,7 +248,7 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
         else if (sx_size == 3)
         {
             /* Mark the start of the regression point */
-            hcp::gpu::cuda::s4::largmax<double_t>(sx, 0, sx_size-1, (sx[0] + hgt * 0.22), mark);
+            hcp::gpu::cuda::s4::largmax<double_t>(sx, 0, sx_size_1, hgt_22, mark);
             mark -= 1;
             mark2 = sx_size - 1;
 
@@ -432,12 +266,15 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
 
         __syncthreads();
 
-
-        for (int jj = stt + tid; jj <= stt + mark2; jj+=blockDim.x)
+        for (int jj = stt + mark + tid; jj <= stt + mark2; jj+=blockDim.x)
             // X->AddRange(mark, mark2);
-            X[jj - stt] = jj;
+            X[jj - stt - mark] = jj;
 
         __syncthreads();
+
+        // update sx_size to mark2 - mark + 1
+        sx_size = mark2 - mark + 1;
+        sx_size_1 = sx_size - 1;
 
         for (int jj = tid; jj <= (mark2-mark); jj+=blockDim.x)
             // sx->clip(mark, mark2);
@@ -446,16 +283,190 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
         __syncthreads();
 
         hcp::gpu::cuda::s4::LinearFit<double_t>(X, sx, sx_size, &mu, &beta);
-
-        //std::cout << "y = " << mu_t << "x + " << beta_t << std::endl;
-        //std::cout << "eValue: " << pow(10, hyp * mu_t + beta_t) * vaa << std::endl;
     }
 
     /* Estimate the log(s(x)) */
     double_t lgs_x = (mu * hyp) + beta;
 
     /* Compute the e(x) = n * s(x) = n * 10^(lg(s(x))) */
-    evalues[bid] = cpsms[bid] * pow(10.0, lgs_x);
+    evalues[bid] = vaa * pow(10.0, lgs_x);
+
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+// tail fit method
+__global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues)
+{
+    // each block will process one result
+    int tid = threadIdx.x;
+    int bid = blockIdx.x;
+
+    /* Assign to internal variables */
+    auto yy = &data[HISTOGRAM_SIZE * bid];
+
+    // make sure the hyp is scaled to int here
+    int hyp = hyps[bid] * 10 + 0.5;
+
+    extern __shared__ double shmem[];
+
+    double *p_x = &shmem[0];
+    double *sx = &shmem[HISTOGRAM_SIZE];
+    double *X = &shmem[2*HISTOGRAM_SIZE];
+
+    double mu = 0.0;
+    double beta = 4.0;
+
+    short stt1 = 0;
+    short stt =  0;
+    short end1 = HISTOGRAM_SIZE - 1;
+    //short ends = HISTOGRAM_SIZE - 1;
+
+    /* Find the curve region */
+    hcp::gpu::cuda::s4::rargmax<double_t>(yy, 0, hyp-1, 1.0, end1);
+    hcp::gpu::cuda::s4::argmax<double_t>(yy, 0, end1, 1.0, stt1);
+
+    /* To handle special cases */
+    if (stt1 == end1)
+    {
+        stt1 = end1;
+        end1 += 1;
+    }
+
+    /* Slice off yyt between stt1 and end1 */
+    hcp::gpu::cuda::s4::Assign<double>(p_x, yy + stt1, yy + end1 + 1);
+
+    /* Database size
+     * vaa = accumulate(yy, yy + hyp + 1, 0); */
+    int vaa = cpsms[bid];
+
+    /* Check if no distribution data except for hyp */
+    if (vaa < 1)
+    {
+        mu = 0;
+        beta = 100;
+        stt = stt1;
+        //ends = end1;
+    }
+    else
+    {
+        /* Filter p_x again */
+        //ends = end1;
+        stt = stt1;
+
+        int p_x_size = end1 - stt1 + 1;
+
+        /* Compute survival function s(x) */
+        hcp::gpu::cuda::s4::Assign(sx, p_x, p_x + p_x_size);
+
+        /* cumulative_sum(sx) */
+        hcp::gpu::cuda::s4::prefixSum(p_x, p_x + p_x_size, sx);
+
+        short sx_size = end1 - stt1 + 1;
+        short sx_size_1 = sx_size - 1;
+
+        /* Adjust for negatives */
+        short replacement = 0;
+
+        hcp::gpu::cuda::s4::rargmax<double_t>(sx, (short)0, sx_size_1, (double)(1e-4), replacement);
+
+        /* Survival function s(x) */
+        for (int j = tid; j < sx_size; j+=blockDim.x)
+        {
+            // divide by vaa
+            sx[j] = sx[j]/vaa;
+            // s(x) = -(s(x) - 1) = 1 - s(x)
+            sx[j] = 1 - sx[j];
+
+            // take care of the case where s(x) > 1
+            if (sx[j] > 1)
+                sx[j] = 0.999;
+            // take care of the case where s(x) < 0
+            else if (sx[j] < 0)
+                sx[j] = sx[replacement];
+        }
+
+        __syncthreads();
+
+        for (int ij = tid; ij < sx_size; ij += blockDim.x)
+        {
+            auto myVal = log10f(sx[ij]);
+            sx[ij] = myVal;
+        }
+
+        __syncthreads();
+
+        /* Offset markers */
+        short mark = 0;
+        short mark2 = 0;
+        auto hgt = sx[sx_size - 1] - sx[0];
+        auto hgt_22 = sx[0] + hgt * 0.22;
+        auto hgt_87 = sx[0] + hgt * 0.87;
+
+        /* If length > 4, then find thresholds */
+        if (sx_size > 3)
+        {
+            hcp::gpu::cuda::s4::largmax<double_t>(sx, 0, sx_size_1, hgt_22, mark);
+            mark -= 1;
+            hcp::gpu::cuda::s4::rargmax<double_t>(sx, 0, sx_size_1, hgt_87, mark2);
+
+            if (mark2 == sx_size)
+            {
+                mark2 -= 1;
+            }
+
+            /* To handle special cases */
+            if (mark >= mark2)
+            {
+                mark = mark2 - 1;
+            }
+        }
+        /* If length < 4 business as usual */
+        else if (sx_size == 3)
+        {
+            /* Mark the start of the regression point */
+            hcp::gpu::cuda::s4::largmax<double_t>(sx, 0, sx_size_1, hgt_22, mark);
+            mark -= 1;
+            mark2 = sx_size - 1;
+
+            /* To handle special cases */
+            if (mark >= mark2)
+            {
+                mark = mark2 - 1;
+            }
+        }
+        else
+        {
+            mark = 0;
+            mark2 = sx_size - 1;
+        }
+
+        __syncthreads();
+
+        for (int jj = stt + mark + tid; jj <= stt + mark2; jj+=blockDim.x)
+            // X->AddRange(mark, mark2);
+            X[jj - stt - mark] = jj;
+
+        __syncthreads();
+
+        // update sx_size to mark2 - mark + 1
+        sx_size = mark2 - mark + 1;
+        sx_size_1 = sx_size - 1;
+
+        for (int jj = tid; jj <= (mark2-mark); jj+=blockDim.x)
+            // sx->clip(mark, mark2);
+            sx[jj] = sx[jj+mark];
+
+        __syncthreads();
+
+        hcp::gpu::cuda::s4::LinearFit<double_t>(X, sx, sx_size, &mu, &beta);
+    }
+
+    /* Estimate the log(s(x)) */
+    double_t lgs_x = (mu * hyp) + beta;
+
+    /* Compute the e(x) = n * s(x) = n * 10^(lg(s(x))) */
+    evalues[bid] = vaa * pow(10.0, lgs_x);
 
 }
 
@@ -484,13 +495,17 @@ __host__ status_t processResults(Index *index, Queries<spectype_t> *gWorkPtr, in
 #if defined (TAILFIT) || true
 
     // use function pointers to point to the correct overload
-    auto TailFit_ptr = static_cast<void (*)(dScores_t *, double *)>(&TailFit);
+    auto TailFit_ptr = static_cast<void (*)(double *, int *, dhCell *, double *)>(&TailFit);
 
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the TailFit kernel
     cudaFuncSetAttribute(*TailFit_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
 
     // the tailfit kernel
-    hcp::gpu::cuda::s4::TailFit<<<numSpecs, blockSize, KBYTES(48), driver->get_stream(SEARCH_STREAM)>>>(d_Scores, d_evalues);
+    hcp::gpu::cuda::s4::TailFit<<<numSpecs, blockSize, KBYTES(48), driver->get_stream(SEARCH_STREAM)>>>(d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, d_evalues);
+
+    // synchronize the search stream
+    driver->stream_sync(SEARCH_STREAM);
+
 #else
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the logWeibullfit kernel
     //cudaFuncSetAttribute(logWeibullFit, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
@@ -502,20 +517,14 @@ __host__ status_t processResults(Index *index, Queries<spectype_t> *gWorkPtr, in
     // synchronize the search stream
     driver->stream_sync(SEARCH_STREAM);
 
-    // host dScores
-    hcp::gpu::cuda::s3::dScores *h_dScores = new hcp::gpu::cuda::s3::dScores();
-
-    // copy pointers from the device
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_dScores, d_Scores, 1, driver->stream[DATA_STREAM]));
-
     // asynchronously copy the dhCell and cpsms to hostmem for writing to file
     dhCell *h_topscore = new dhCell[numSpecs];
     int *h_cpsms = new int[numSpecs];
     double *h_evalues = new double[numSpecs];
 
     // transfer data to host
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_topscore, h_dScores->topscore, numSpecs, driver->stream[DATA_STREAM]));
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_cpsms, h_dScores->cpsms, numSpecs, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_topscore, d_Scores->topscore, numSpecs, driver->stream[DATA_STREAM]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_cpsms, d_Scores->cpsms, numSpecs, driver->stream[DATA_STREAM]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_evalues, d_evalues, numSpecs, driver->stream[DATA_STREAM]));
 
     // synchronize the stream
@@ -547,12 +556,9 @@ __host__ status_t processResults(Index *index, Queries<spectype_t> *gWorkPtr, in
     delete[] h_cpsms;
     delete[] h_evalues;
 
-    delete h_dScores;
-
     h_topscore = nullptr;
     h_cpsms = nullptr;
     h_evalues = nullptr;
-    h_dScores = nullptr;
 
     return status;
 }

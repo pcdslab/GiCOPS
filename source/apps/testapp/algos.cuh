@@ -333,7 +333,7 @@ __device__ void Assign(T *p_x, T *beg, T *end)
 }
 
 template <typename T>
-__device__ void partialSum(T *beg, T *end, T *out)
+__device__ void prefixSum(T *beg, T *end, T *out)
 {
     short tid = threadIdx.x;
     int size = end - beg;

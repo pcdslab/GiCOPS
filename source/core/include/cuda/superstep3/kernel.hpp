@@ -70,6 +70,7 @@ struct dQueries
 
 };
 
+#ifdef USE_GPU
 struct dScores
 {
     double_t *survival;
@@ -81,6 +82,8 @@ struct dScores
 };
 
 dScores *&getScorecard();
+
+#endif // USE_GPU
 
 std::pair<BYC *, int>& getBYC(int chunksize=0);
 

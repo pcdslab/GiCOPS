@@ -214,13 +214,13 @@ __global__ void TailFit(double *survival, double *evalues, int *hyperscore, int 
         Assign(sx, p_x, p_x + p_x_size);
 
         /* cumulative_sum(sx) */
-        partialSum(p_x, p_x + p_x_size, sx);
+        prefixSum(p_x, p_x + p_x_size, sx);
 
         short sx_size = end1 - stt1 + 1;
         short sx_size_1 = sx_size - 1;
 
         /* Survival function s(x) */
-        for (int j = tid; j < end1 - stt1 + 1; j+=blockDim.x)
+        for (int j = tid; j < sx_size; j+=blockDim.x)
         {
             // divide by vaa
             sx[j] /= vaa;

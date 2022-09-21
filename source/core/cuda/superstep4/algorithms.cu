@@ -322,13 +322,13 @@ __device__ void rargmax(T *data, short i1, short i2, T val, short &out)
 
 /* Slice off yyt between stt1 and end1 */
 template <typename T>
-__device__ void Assign(T *p_x, T *beg, T *end)
+__device__ void Assign(T *out, T *beg, T *end)
 {
     short tid = threadIdx.x;
     int size = end - beg;
 
-    for (int i = tid; i < size; i+=blockDim.x)
-        p_x[i] = beg[i];
+    for (int ij = tid; ij < size; ij+=blockDim.x)
+        out[ij] = beg[ij];
 
     __syncthreads();
 }
@@ -336,7 +336,7 @@ __device__ void Assign(T *p_x, T *beg, T *end)
 // -------------------------------------------------------------------------------------------- //
 
 template <typename T>
-__device__ void partialSum(T *beg, T *end, T *out)
+__device__ void prefixSum(T *beg, T *end, T *out)
 {
     short tid = threadIdx.x;
     int size = end - beg;
@@ -577,7 +577,7 @@ template __device__ void argmax<double_t>(double_t *data, short i1, short i2, do
 template __device__ void largmax<double_t>(double_t *data, short i1, short i2, double_t val, short &out);
 template __device__ void rargmax<double_t>(double_t *data, short i1, short i2, double_t val, short &out);
 template __device__ void Assign<double_t>(double_t *p_x, double_t *beg, double_t *end);
-template __device__ void partialSum<double_t>(double_t *beg, double_t *end, double_t *out);
+template __device__ void prefixSum<double_t>(double_t *beg, double_t *end, double_t *out);
 template __device__ void XYbar<double_t>(double_t *x, double_t *y, int n, double_t &xbar, double_t &ybar);
 template __device__ void TopBot<double_t>(double_t *x, double_t *y, int n, double_t xbar, double_t ybar, double_t &top, double_t &bot);
 template __device__ void ArraySum<int>(int *arr,int size, int *sum);

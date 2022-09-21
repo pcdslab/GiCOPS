@@ -26,7 +26,9 @@
 
 #include "cuda/superstep3/kernel.hpp"
 
+#if defined (USE_GPU)
 using dScores_t = hcp::gpu::cuda::s3::dScores;
+#endif // USE_GPU
 
 namespace hcp
 {

@@ -616,12 +616,14 @@ status_t DistributedSearch(Index *index)
     // Overheads
     //
 
+#if defined (USE_GPU)
     // FIXME: remove this - wait for GPU thread to stop
     for (auto &thd : gpuSearchThds)
     {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         thd.join();
     }
+#endif // USE_GPU
 
     // print cumulative search time and penalty
     if (params.myid == 0)

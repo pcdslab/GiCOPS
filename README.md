@@ -6,7 +6,10 @@
 
 ## Published Research
 
-*Placeholder for the published research paper*
+Read  our research work in the following research paper. You can access the paper via [SharedIt](https://rdcu.be/cvFan). Please cite our paper if you use our work.
+
+> <span style="color:black">Muhammad Haseeb, and Fahad Saeed. ***"High performance computing framework for tera-scale database search of mass spectrometry data."*** Nature Computational Science, Volume no. 1, Issue no. 8 (2021): pp no. 550-561.</span> [https://doi.org/10.1038/s43588-021-00113-z](https://doi.org/10.1038/s43588-021-00113-z)
+
 
 ## Documentation
 

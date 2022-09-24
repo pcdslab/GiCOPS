@@ -55,6 +55,9 @@ extern __constant__ float_t statMass[ALPHABETS];
 // log(factorial(n))
 __constant__ double_t d_lgFact[hcp::utils::maxshp];
 
+// maximum dF
+#define MAXDF                          2
+
 // -------------------------------------------------------------------------------------------- //
 
 // host side global parameters
@@ -71,6 +74,16 @@ namespace gpu
 namespace cuda
 {
 
+// -------------------------------------------------------------------------------------------- //
+
+namespace s1
+{
+
+extern __device__ int log2ceil(unsigned long long x);
+
+}
+
+// -------------------------------------------------------------------------------------------- //
 namespace s4
 {
 
@@ -78,6 +91,9 @@ template <typename T>
 extern __device__ void ArraySum(T *arr, int size, T *sum);
 
 }
+
+// -------------------------------------------------------------------------------------------- //
+
 namespace s3
 {
 
@@ -550,12 +566,6 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
     auto d_BYC = std::get<0>(pBYC);
     auto maxchunk = std::get<1>(pBYC);
 
-    // fixme: remove me
-    //static int *d_debug = nullptr;
-    
-    //if (!d_debug)
-        //hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_debug, MBYTES(20), driver->stream[SEARCH_STREAM]));
-
     // set the shared memory to 48KB
     cudaFuncSetAttribute(SpSpGEMM, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
 
@@ -573,39 +583,6 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
 
     // synchronize the stream
     driver->stream_sync(SEARCH_STREAM);
-
-    // fixme: remove me
-    //int szzzzz = (38911-31657+1);
-    //static double *h_debug = nullptr;
-    
-    //if (!h_debug)
-        //h_debug = new double[KBYTES(2)];
-
-    //hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_debug, d_Scores->survival, HISTOGRAM_SIZE, driver->stream[SEARCH_STREAM]));
-
-    //driver->stream_sync(SEARCH_STREAM);
-
-    // std::cout << std::endl;
-
-    //    if (h_debug[i*3 + 0])
-     //       std::cout << "i = " << i + 31657 << ", " << h_debug[i*3 + 0] << ", " << h_debug[i*3 + 1] << ", " << h_debug[i*3 + 2] << ", " << std::endl;
-    //}
-
-    // fixme: remove me
-    //for (int i = 0; i < HISTOGRAM_SIZE; i++)
-    //{
-        //std::cout << i << ":" << h_debug[i] << ", ";
-    //}
-
-    //std::cout << std::endl;
-
-    /*
-    std::cout << "topscore.hyperscore = " << h_debug[HISTOGRAM_SIZE] << std::endl;
-    std::cout << "topscore.psid = " << h_debug[HISTOGRAM_SIZE+1] << std::endl;
-    std::cout << "topscore.idxoffset = " << h_debug[HISTOGRAM_SIZE+2] << std::endl;
-    std::cout << "topscore.sharedions = " << h_debug[HISTOGRAM_SIZE+3] << std::endl; */
-
-    //hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_debug, driver->stream[SEARCH_STREAM]));
 
     return status;
 }
@@ -670,15 +647,19 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     // if maxlimit < minlimit then no point, just return
     if (maxlimit < minlimit)
         return;
-    
-    // fixme: remove me
-    //f (!threadIdx.x)
-    //printf("ixx=%d, minlimit=%d, maxlimit=%d, qspeclen=%d\n", ixx, minlimit, maxlimit, qspeclen);
 
-#define MAXDF                          2
+    // shared memory
+    extern __shared__ int shmem[];
 
-    __shared__ int minions[(2*MAXDF + 1) * QALEN];
-    __shared__  int maxions[(2*MAXDF + 1) * QALEN];
+    // size for minions and maxions
+    const int minmaxsize = (2*MAXDF + 1) * QALEN;
+
+    int *minions = &shmem[0];
+    int *maxions = &minions[minmaxsize];
+
+    // keys = ppid, vals = BYC for reduction
+    int *keys    = &maxions[minmaxsize * 2];
+    BYC *vals    = (BYC*)&keys[1024];
 
     // setup shared memory here
     __syncthreads();
@@ -720,41 +701,82 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
                 int isY = residue / halfspeclen;
                 int isB = 1 - isY;
 
-                // fixme: remove me 
-                //printf("tid=%d, bin=%d, ppid=%d\n", threadIdx.x, bin, ppid);
+                // key - ppid
+                auto myKey = ppid;
+
+                // write to keys
+                keys[threadIdx.x] = myKey;
 
                 /* Get the map element */
-                BYC *elmnt = bycPtr + ppid;
+                BYC *myVal = &vals[threadIdx.x];
+                myVal->bc = isB;
+                myVal->ibc = intn * isB;
+                myVal->yc = isY;
+                myVal->iyc = intn * isY;
 
-                /* Update */
-                elmnt->bc += isB;
-                elmnt->ibc += intn * isB;
-                elmnt->yc += isY;
-                elmnt->iyc += intn * isY;
+                // 
+                // reduce the BYC elements to avoid 
+                // race conditions and locking
+                //
+
+                // number of active threads
+                int activethds = min(blockDim.x, ends - ion + threadIdx.x + 1);
+
+                int iters = hcp::gpu::cuda::s1::log2ceil(activethds);
+
+                // is this thread a part of a localized group (and not group leader)
+                bool isGroup = false;
+
+                // threadIdx.x is always the leader
+                if (threadIdx.x > 0)
+                    isGroup = (myKey == keys[threadIdx.x - 1]);
+
+                // the reduction loop
+                for (int ij = 0; ij < iters; ij++)
+                {
+                    int offset = 1 << ij;
+
+                    // exchange values
+                    if (threadIdx.x < (activethds - offset))
+                    {
+                        int idx = threadIdx.x + offset;
+                        int newkey = keys[idx];
+                        BYC *newval = &vals[idx];
+
+                        // if the keys match, sum (reduce) the values
+                        if (newkey == myKey)
+                        {
+                            myVal->bc += newval->bc;
+                            myVal->ibc += newval->ibc;
+                            myVal->yc += newval->yc;
+                            myVal->iyc += newval->iyc;
+                        }
+                    }
+                }
+
+                // only write to global memory if no group or the leader
+                if (!isGroup)
+                {
+                    BYC *glob = &bycPtr[myKey];
+                    glob->bc += myVal->bc;
+                    glob->ibc += myVal->ibc;
+                    glob->yc += myVal->yc;
+                    glob->iyc += myVal->iyc;
+                }
             }
+
+            // synchronize
             __syncthreads();
         }
     }
 
-    // fixme: remove me 
-/*     for (int jj = minlimit + threadIdx.x; jj <= maxlimit; jj += blockDim.x)
-    {
-        BYC *elmnt = bycPtr + jj;
-        int idx = jj - minlimit;
-        debug[4*idx + 0] = elmnt->yc;
-        debug[4*idx + 1] = elmnt->bc;
-        debug[4*idx + 2] = elmnt->iyc;
-        debug[4*idx + 3] = elmnt->ibc;
-    } */
+    // reuse the shared memory
+    int *l_cpsms = &maxions[minmaxsize * 2];
+    int *histogram = &l_cpsms[1024];
+    
+    dhCell *topscores = (dhCell *)&histogram[1024];
 
-    //if (threadIdx.x ==0)
-        //printf("qnum=%d, minlimit=%d, maxlimit=%d, qspeclen=%d\n", qnum, minlimit, maxlimit, qspeclen);
-
-    // shared memory for topscores and the histogram
-    __shared__ int histogram[HISTOGRAM_SIZE];
-    __shared__ dhCell topscores[1024];
-    __shared__ int l_cpsms[1024];
-
+    // initialize
     for (int ij = threadIdx.x; ij < HISTOGRAM_SIZE; ij+=blockDim.x)
         histogram[ij] = 0;
 
@@ -768,9 +790,8 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
 
     }
 
+    // wait for shmem to be initialized
     __syncthreads();
-
-    //printf("Debug Pt1 reached by tid = %d\n", threadIdx.x);
 
     /* Look for candidate PSMs */
     for (int_t it = minlimit + threadIdx.x; it <= maxlimit; it+= blockDim.x)
@@ -779,40 +800,29 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
         ushort_t ycc = bycPtr[it].yc;
         ushort_t shpk = bcc + ycc;
 
-        // fixme: remove me 
-        //printf("tid:%d, it=%d, shpk=%d, ibc=%u, iyc=%u\n", threadIdx.x, it, shpk, bycPtr[it].ibc, bycPtr[it].iyc);
-
-        /* Filter by the min shared peaks */
+        // filter by the min shared peaks
         if (shpk >= min_shp) 
         {
-            /* Create a heap cell */
+            // Create a heap cell
             dhCell cell;
 
             // get the precomputed log(factorial(x))
             double_t h1 = d_lgFact[bcc] + d_lgFact[ycc];
 
-            /* Fill in the information */
+            // Fill in the information
             cell.hyperscore = h1 + log10f(1 + bycPtr[it].ibc) + log10f(1 + bycPtr[it].iyc) - 6;
 
-            // fixme: remove me 
-            //printf("ixx=%d, it=%d, shpk=%d, hs=%f\n", ixx, it, shpk, cell.hyperscore);
-
-            //int ii = it-minlimit;
-            //debug[ii*3 + 0] = it;
-            //debug[ii*3 + 1] = shpk;
-            //debug[ii*3 + 2] = (int)(cell.hyperscore * 10 + 0.5);
-
-            /* hyperscore < 0 means either b- or y- ions were not matched */
+            // hyperscore < 0 means either b- or y- ions were not matched
             if (cell.hyperscore > 0)
             {
-                // Update the histogram
-                atomicAdd(&histogram[(int)(cell.hyperscore * 10 + 0.5)], 1);
-
                 cell.idxoffset = ixx;
                 cell.psid = it;
                 cell.sharedions = shpk;
 
                 l_cpsms[threadIdx.x] +=1;
+
+                // Update the histogram
+                atomicAdd(&histogram[(int)(cell.hyperscore * 10 + 0.5)], 1);
 
                 if (cell.hyperscore > topscores[threadIdx.x].hyperscore)
                 {
@@ -827,8 +837,6 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
 
     __syncthreads();
 
-    //printf("Debug Pt2 reached by tid = %d\n", threadIdx.x);
-
     dhCell l_topscore;
 
     // get max dhcell
@@ -836,7 +844,7 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
 
     __syncthreads();
 
-    if (!threadIdx.x && l_topscore.hyperscore > d_topscore[qnum].hyperscore)
+    if (!threadIdx.x && (l_topscore.hyperscore > d_topscore[qnum].hyperscore))
     {
         d_topscore[qnum].hyperscore = l_topscore.hyperscore;
         d_topscore[qnum].psid       = l_topscore.psid;
@@ -844,32 +852,23 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
         d_topscore[qnum].sharedions = l_topscore.sharedions;
     }
 
+    // local candidate psms
     int cpsms_loc = 0;
 
-    // get the cpsms
+    // sum the local cpsms to get the count
     hcp::gpu::cuda::s4::ArraySum(l_cpsms, 1024, &cpsms_loc);
 
     __syncthreads();
 
+    // write to the global memory
     if (!threadIdx.x)
-        cpsms[qnum] += cpsms_loc;
+        *cpsms = *cpsms + cpsms_loc;
 
     __syncthreads();
 
-
     // copy histogram to the global memory
     for (int ii = threadIdx.x; ii < HISTOGRAM_SIZE; ii+=blockDim.x)
-            survival[ii] += histogram[ii];
-
-     // fixme: remove me
-    //for (int o = threadIdx.x; o < HISTOGRAM_SIZE; o += blockDim.x)
-        //debug[o] += histogram[o];
-
-    /*
-    debug[HISTOGRAM_SIZE] = (int)(resPtr->topscore->hyperscore* 10 + 0.5);
-    debug[HISTOGRAM_SIZE + 1] = (int)resPtr->topscore->psid;
-    debug[HISTOGRAM_SIZE+2] = (int)resPtr->topscore->idxoffset;
-    debug[HISTOGRAM_SIZE + 3] = (int)resPtr->topscore->sharedions; */
+        survival[ii] += histogram[ii];
 
     // reset the bycPtr
     for (int f = minlimit + threadIdx.x; f <= maxlimit; f += blockDim.x)

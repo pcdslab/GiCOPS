@@ -4,9 +4,9 @@
 
 *HiCOPS*: Computational framework for accelerating database peptide search workloads on supercomputing systems.
 
-## Published Research
+## Citation
 
-Read  our research work in the following research paper. You can access the paper via [SharedIt](https://rdcu.be/cvFan). Please cite our paper if you use our work.
+Read our work in the following research paper. You can access the paper via [SharedIt](https://rdcu.be/cvFan). Please cite our paper if you use our work.
 
 > <span style="color:black">Muhammad Haseeb, and Fahad Saeed. ***"High performance computing framework for tera-scale database search of mass spectrometry data."*** Nature Computational Science, Volume no. 1, Issue no. 8 (2021): pp no. 550-561.</span> [https://doi.org/10.1038/s43588-021-00113-z](https://doi.org/10.1038/s43588-021-00113-z)
 
@@ -23,7 +23,7 @@ This work is licensed under a <a rel="license" href="http://creativecommons.org/
 
 Open an issue [here](https://github.com/hicops/hicops/issues). Please include any logs, screenshots and/or helpful observations. Also, do not forget to describe the dataset(s), database, steps performed etc. so that the issue can be reproduced.
 
-# Credits
+## Credits
 
 1. [Muhammad Haseeb](https://sites.google.com/fiu.edu/muhammadhaseeb) [![Twitter](https://flat.badgen.net/twitter/follow/iHaseebM?icon=twitter)](https://twitter.com/iHaseebM)
 2. [Fahad Saeed](https://prof-s.github.io) [![Twitter](https://flat.badgen.net/twitter/follow/Prof_FahadSaeed?icon=twitter)](https://twitter.com/Prof_FahadSaeed)

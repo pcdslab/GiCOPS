@@ -59,10 +59,10 @@ namespace s4
 __global__ void logWeibullFit(dScores_t *d_Scores, double *evalues, short min_cpsm);
 
 // tail fit method
-__global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *evalues);
+__global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *evalues, short min_cpsms);
 
 // alternate tail fit method
-__global__ void TailFit(double_t *data, float_t *hyp, int *cpsms, double *evalues);
+__global__ void TailFit(double_t *data, float_t *hyp, int *cpsms, double *evalues, short min_cpsms);
 
 template <class T>
 __device__ void LinearFit(T* x, T* y, int_t n, double_t *a, double_t *b);
@@ -120,7 +120,7 @@ __host__ void freed_eValues()
 // -------------------------------------------------------------------------------------------- //
 
 // tail fit method
-__global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *evalues)
+__global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *evalues, short min_cpsms)
 {
     // each block will process one result
     int tid = threadIdx.x;
@@ -165,10 +165,11 @@ __global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *
     int vaa = cpsms[bid];
 
     /* Check if no distribution data except for hyp */
-    if (vaa < 1)
+    if (vaa < min_cpsms)
     {
-        mu = 0;
-        beta = 100;
+        //mu = 0;
+        //beta = 100;
+        evalues[bid] = MAX_HYPERSCORE + 20;
         stt = stt1;
         //ends = end1;
     }
@@ -283,20 +284,19 @@ __global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *
         __syncthreads();
 
         hcp::gpu::cuda::s4::LinearFit<double_t>(X, sx, sx_size, &mu, &beta);
+
+        /* Estimate the log(s(x)) */
+        double_t lgs_x = (mu * hyp) + beta;
+
+        /* Compute the e(x) = n * s(x) = n * 10^(lg(s(x))) */
+        evalues[bid] = vaa * pow(10.0, lgs_x);
     }
-
-    /* Estimate the log(s(x)) */
-    double_t lgs_x = (mu * hyp) + beta;
-
-    /* Compute the e(x) = n * s(x) = n * 10^(lg(s(x))) */
-    evalues[bid] = vaa * pow(10.0, lgs_x);
-
 }
 
 // -------------------------------------------------------------------------------------------- //
 
 // tail fit method
-__global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues)
+__global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues, short min_cpsms)
 {
     // each block will process one result
     int tid = threadIdx.x;
@@ -341,11 +341,12 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
     int vaa = cpsms[bid];
 
     /* Check if no distribution data except for hyp */
-    if (vaa < 1)
+    if (vaa < min_cpsms)
     {
         mu = 0;
         beta = 100;
         stt = stt1;
+        evalues[bid] = MAX_HYPERSCORE + 20;
         //ends = end1;
     }
     else
@@ -495,23 +496,22 @@ __host__ status_t processResults(Index *index, Queries<spectype_t> *gWorkPtr, in
 #if defined (TAILFIT) || true
 
     // use function pointers to point to the correct overload
-    auto TailFit_ptr = static_cast<void (*)(double *, int *, dhCell *, double *)>(&TailFit);
+    auto TailFit_ptr = static_cast<void (*)(double *, int *, dhCell *, double *, short)>(&TailFit);
 
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the TailFit kernel
     cudaFuncSetAttribute(*TailFit_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
 
     // the tailfit kernel
-    hcp::gpu::cuda::s4::TailFit<<<numSpecs, blockSize, KBYTES(48), driver->get_stream(SEARCH_STREAM)>>>(d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, d_evalues);
-
-    // synchronize the search stream
-    driver->stream_sync(SEARCH_STREAM);
+    hcp::gpu::cuda::s4::TailFit<<<numSpecs, blockSize, KBYTES(48), driver->get_stream(SEARCH_STREAM)>>>(d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, d_evalues, (short)params.min_cpsm);
 
 #else
+
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the logWeibullfit kernel
     //cudaFuncSetAttribute(logWeibullFit, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
 
     // the logWeibullfit kernel
     //hcp::gpu::cuda::s4::logWeibullFit<<<numSpecs, blockSize, KBYTES(48), driver->get_stream(SEARCH_STREAM)>>>(d_Scores, d_evalues, min_cpsm);
+
 #endif // TAILFIT
 
     // synchronize the search stream
@@ -741,13 +741,13 @@ __host__ void processResults(double *h_data, float *h_hyp, int *h_cpsms, double 
 #if defined (TAILFIT) || true
 
     // use function pointers to point to the correct overload
-    auto TailFit_ptr = static_cast<void (*)(double *, float *, int *, double *)>(&TailFit);
+    auto TailFit_ptr = static_cast<void (*)(double *, float *, int *, double *, short)>(&TailFit);
 
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the TailFit kernel
     cudaFuncSetAttribute(*TailFit_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
 
     // the tailfit kernel
-    hcp::gpu::cuda::s4::TailFit<<<bsize, blockSize, KBYTES(48), driver->get_stream()>>>(d_data, d_hyp, d_cpsms, d_evalues);
+    hcp::gpu::cuda::s4::TailFit<<<bsize, blockSize, KBYTES(48), driver->get_stream()>>>(d_data, d_hyp, d_cpsms, d_evalues, (short)params.min_cpsm);
 #else
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the logWeibullfit kernel
     //cudaFuncSetAttribute(logWeibullFit, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));

@@ -543,7 +543,6 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
 
     // number of spectra in the current batch
     int nspectra = gWorkPtr->numSpecs;
-    //int npeaks = gWorkPtr->numPeaks;
 
     auto d_iA = hcp::gpu::cuda::s1::getATcols();
     auto d_bA = hcp::gpu::cuda::s1::getbA();
@@ -578,7 +577,7 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
         if (iter == niters - 1)
             nblocks = nspectra - iter * itersize;
 
-        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(48), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter, d_BYC, maxchunk, d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
+        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(48), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter * itersize, d_BYC, maxchunk, d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
     }
 
     // synchronize the stream
@@ -658,7 +657,7 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     int *maxions = &minions[minmaxsize];
 
     // keys = ppid, vals = BYC for reduction
-    int *keys    = &maxions[minmaxsize * 2];
+    int *keys    = &maxions[minmaxsize];
     BYC *vals    = (BYC*)&keys[1024];
 
     // setup shared memory here
@@ -683,9 +682,6 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
 
             int stt = d_bA[bin] + off1;
             int ends = d_bA[bin] + off2;
-
-            //if (threadIdx.x == 0 && (ends > stt))
-                //printf("bin=%d, stt=%d, ends=%d\n", bin, stt, ends);
 
             for (auto ion = stt + threadIdx.x; ion <= ends; ion+= blockDim.x)
             {
@@ -787,7 +783,6 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
         topscores[ij].psid = 0;
         topscores[ij].idxoffset = 0;
         topscores[ij].sharedions = 0;
-
     }
 
     // wait for shmem to be initialized

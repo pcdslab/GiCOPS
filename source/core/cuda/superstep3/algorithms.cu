@@ -189,7 +189,7 @@ __device__ void getMaxdhCell(dhCell *topscores, dhCell *out)
 
     for(int offset = warpsize / 2; offset > 0; offset /= 2)
     {
-        int tempScore = __shfl_down_sync(mask, myhScore, offset);
+        float tempScore = __shfl_down_sync(mask, myhScore, offset);
         int tempIdx = __shfl_down_sync(mask, myIdx, offset);
 
         if (tempScore > myhScore)
@@ -201,7 +201,7 @@ __device__ void getMaxdhCell(dhCell *topscores, dhCell *out)
 
     __syncthreads();
 
-    __shared__ int lochScore[32];
+    __shared__ float lochScore[32];
     __shared__ int locIdx[32];
 
     if (laneId == 0)
@@ -231,7 +231,7 @@ __device__ void getMaxdhCell(dhCell *topscores, dhCell *out)
 
         for(int offset = warpsize / 2; offset > 0; offset /= 2)
         {
-            int tempScore = __shfl_down_sync(mask, myhScore, offset);
+            float tempScore = __shfl_down_sync(mask, myhScore, offset);
             int tempIdx = __shfl_down_sync(mask, myIdx, offset);
 
             if (tempScore > myhScore)

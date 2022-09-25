@@ -767,10 +767,10 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     }
 
     // reuse the shared memory
-    int *l_cpsms = &maxions[minmaxsize * 2];
+    int *l_cpsms = &shmem[0];
     int *histogram = &l_cpsms[1024];
     
-    dhCell *topscores = (dhCell *)&histogram[1024];
+    dhCell *topscores = (dhCell *)&histogram[HISTOGRAM_SIZE];
 
     // initialize
     for (int ij = threadIdx.x; ij < HISTOGRAM_SIZE; ij+=blockDim.x)

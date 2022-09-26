@@ -34,6 +34,8 @@ namespace cuda
 namespace s3
 {
 
+// -------------------------------------------------------------------------------------------- //
+
 __device__ void lower_bound(uint_t *data, int size, int *lbound, int t)
 {
     int n = size;
@@ -65,6 +67,8 @@ __device__ void lower_bound(uint_t *data, int size, int *lbound, int t)
     return;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 __device__ void upper_bound(uint_t *data, int size, int *ubound, int t)
 {
     int n = size;
@@ -95,6 +99,8 @@ __device__ void upper_bound(uint_t *data, int size, int *ubound, int t)
 
     return;
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint *d_bA, uint *d_iA, int dF, int qspeclen, int speclen, int minlimit, int maxlimit, int maxmass, int scale)
 {
@@ -133,28 +139,16 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
             if (data_size < 1)
                 continue;
 
-/*             int *lbound = minions + ion;
-            int *ubound = maxions + ion; */
-
             // lowerbound limit
             int target = minlimit * speclen;
 
-            //printf("tid: %d, target: %d, iAbound: %d, lbound: %d, data_size: %d\n", tid, target, data_ptr[*lbound], *lbound, data_size);
-
             // compute lower bound
             lower_bound(data_ptr, data_size, &lbound, target);
-
-            //printf("tid: %d, lbound: %d, data_size: %d\n", tid, *lbound, data_size);
-
-            //printf("tid: %d, target: %d, iAbound: %d, iAbound-1: %d, iAbound+1: %d, lbound: %d, data_size: %d\n", tid, target, data_ptr[*lbound], data_ptr[*lbound-1], data_ptr[*lbound+1], *lbound, data_size);
 
             // upperbound limit
             target = (((maxlimit + 1) * speclen) - 1);
 
             upper_bound(data_ptr, data_size, &ubound, target);
-
-            //if (lbound == ubound)
-                //printf("tid: %d, lb: %d, ub: %d, iAl: %d, iAu:%d, tl: %d, tu: %d\n", tid, lbound, ubound, data_ptr[lbound], data_ptr[ubound], minlimit * speclen, target);
         }
     }
 
@@ -171,6 +165,8 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
     return;
 
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 __device__ void getMaxdhCell(dhCell *topscores, dhCell *out)
 {
@@ -255,6 +251,66 @@ __device__ void getMaxdhCell(dhCell *topscores, dhCell *out)
 
     return;
 }
+
+// -------------------------------------------------------------------------------------------- //
+
+template <typename T>
+__device__ void blockSum(T val, T &sum)
+{
+    short tid = threadIdx.x;
+    short warpsize = 32;
+    short warpId = tid / warpsize;
+    short laneId = tid % warpsize;
+    short size = blockDim.x;
+    short nwarps = size / warpsize;
+    nwarps += (size % warpsize) ? 1 : 0;
+
+    // sum a warp
+    unsigned mask  = __ballot_sync(0xffffffff, tid < size);
+
+    for (int offset = warpsize / 2; offset > 0; offset /= 2)
+        val += __shfl_down_sync(mask, val, offset);
+
+    __syncthreads();
+
+    // sum a block
+    __shared__ T bSum[32];
+
+    if (laneId == 0)
+        bSum[warpId] = val;
+
+    __syncthreads();
+
+    if (tid < nwarps)
+        val = bSum[tid];
+    else
+        val = 0;
+
+    if (warpId == 0)
+    {
+        mask  = __ballot_sync(0xffffffff, tid < nwarps);
+
+        for (int offset = warpsize / 2; offset > 0; offset /= 2)
+            val += __shfl_down_sync(mask, val, offset);
+    }
+
+    if (tid == 0)
+        bSum[0] = val;
+
+    __syncthreads();
+
+    // fetch the final sum from the shared memory
+    sum = bSum[0];
+
+    return;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+// instantiate the templates
+template __device__ void blockSum<int>(int val, int &sum);
+
+// -------------------------------------------------------------------------------------------- //
 
 } // namespace s3
 

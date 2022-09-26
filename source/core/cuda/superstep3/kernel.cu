@@ -55,8 +55,6 @@ extern __constant__ float_t statMass[ALPHABETS];
 // log(factorial(n))
 __constant__ double_t d_lgFact[hcp::utils::maxshp];
 
-// maximum dF
-#define MAXDF                          2
 
 // -------------------------------------------------------------------------------------------- //
 
@@ -84,24 +82,16 @@ extern __device__ int log2ceil(unsigned long long x);
 }
 
 // -------------------------------------------------------------------------------------------- //
-namespace s4
-{
-
-template <typename T>
-extern __device__ void ArraySum(T *arr, int size, T *sum);
-
-}
-
-// -------------------------------------------------------------------------------------------- //
 
 namespace s3
 {
 
-// -------------------------------------------------------------------------------------------- //
-
 //
 // CUDA kernel declarations
 //
+
+// -------------------------------------------------------------------------------------------- //
+
 __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *dQ_idx, int *dQ_minlimits, int *dQ_maxlimits, 
                         uint_t* d_bA, uint_t *d_iA, int iter, BYC *bycP, int maxchunk, double *d_survival, int *d_cpsms, 
                         dhCell *d_topscore, int dF, int speclen, int maxmass, int scale, short min_shp, int ixx);
@@ -123,6 +113,9 @@ extern __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr
 extern __device__ void getMaxdhCell(dhCell *topscores, dhCell *out);
 
 extern __device__ void getMinsurvival(double_t *survival, double_t *out);
+
+template <typename T>
+extern __device__ void blockSum(T val, T &sum);
 
 
 // -------------------------------------------------------------------------------------------- //
@@ -623,9 +616,10 @@ __global__ void resetdScores(double *survival, int *cpsms, dhCell *topscore)
 
 // -------------------------------------------------------------------------------------------- //
 
-__global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *dQ_idx, int *dQ_minlimits, int *dQ_maxlimits, 
-                        uint_t* d_bA, uint_t *d_iA, int iter, BYC *bycP, int maxchunk, double *d_survival, int *d_cpsms, 
-                        dhCell *d_topscore, int dF, int speclen, int maxmass, int scale, short min_shp, int ixx)
+__global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *dQ_idx, int *dQ_minlimits,
+                         int *dQ_maxlimits, uint_t* d_bA, uint_t *d_iA, int iter, BYC *bycP, 
+                         int maxchunk, double *d_survival, int *d_cpsms, dhCell *d_topscore, int dF, 
+                         int speclen, int maxmass, int scale, short min_shp, int ixx)
 {
     BYC *bycPtr = &bycP[blockIdx.x * maxchunk];
 
@@ -651,14 +645,14 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     extern __shared__ int shmem[];
 
     // size for minions and maxions
-    const int minmaxsize = (2*MAXDF + 1) * QALEN;
+    const int minmaxsize = ((2 * dF) + 1) * QALEN;
 
     int *minions = &shmem[0];
     int *maxions = &minions[minmaxsize];
 
     // keys = ppid, vals = BYC for reduction
     int *keys    = &maxions[minmaxsize];
-    BYC *vals    = (BYC*)&keys[1024];
+    BYC *vals    = (BYC*)&keys[blockDim.x];
 
     // setup shared memory here
     __syncthreads();
@@ -683,34 +677,51 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
             int stt = d_bA[bin] + off1;
             int ends = d_bA[bin] + off2;
 
-            for (auto ion = stt + threadIdx.x; ion <= ends; ion+= blockDim.x)
+            int nions = ends - stt + 1;
+            int ioniters = nions / blockDim.x;
+            ioniters += (nions % blockDim.x) ? 1 : 0;
+
+            int itnum = 0;
+
+            //
+            // fragment ion search loop
+            //
+            for (int ion = stt + threadIdx.x; itnum < ioniters; ion+= blockDim.x, itnum++)
             {
-                uint_t raw = d_iA[ion];
+                int myKey = 0;
+                BYC *myVal = nullptr;
 
-                /* Calculate parent peptide ID */
-                int_t ppid = (raw / speclen);
+                if (ion <= ends)
+                {
+                    uint_t raw = d_iA[ion];
 
-                /* Calculate the residue */
-                int_t residue = (raw % speclen);
+                    /* Calculate parent peptide ID */
+                    int_t ppid = (raw / speclen);
 
-                /* Either 0 or 1 */
-                int isY = residue / halfspeclen;
-                int isB = 1 - isY;
+                    /* Calculate the residue */
+                    int_t residue = (raw % speclen);
 
-                // key - ppid
-                auto myKey = ppid;
+                    /* Either 0 or 1 */
+                    int isY = residue / halfspeclen;
+                    int isB = 1 - isY;
 
-                // write to keys
-                keys[threadIdx.x] = myKey;
+                    // key - ppid
+                    myKey = ppid;
 
-                /* Get the map element */
-                BYC *myVal = &vals[threadIdx.x];
-                myVal->bc = isB;
-                myVal->ibc = intn * isB;
-                myVal->yc = isY;
-                myVal->iyc = intn * isY;
+                    // write to keys
+                    keys[threadIdx.x] = myKey;
 
-                // 
+                    /* Get the map element */
+                    myVal = &vals[threadIdx.x];
+                    myVal->bc = isB;
+                    myVal->ibc = intn * isB;
+                    myVal->yc = isY;
+                    myVal->iyc = intn * isY;
+                }
+
+                __syncthreads();
+
+                //
                 // reduce the BYC elements to avoid 
                 // race conditions and locking
                 //
@@ -725,29 +736,48 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
 
                 // threadIdx.x is always the leader
                 if (threadIdx.x > 0)
-                    isGroup = (myKey == keys[threadIdx.x - 1]);
+                    isGroup = (myKey == keys[threadIdx.x - 1]) || (threadIdx.x >= activethds);
 
-                // the reduction loop
+                // the reduction loop by all threads
                 for (int ij = 0; ij < iters; ij++)
                 {
                     int offset = 1 << ij;
+
+                    int newKey = 0;
+                    BYC newVal;
 
                     // exchange values
                     if (threadIdx.x < (activethds - offset))
                     {
                         int idx = threadIdx.x + offset;
-                        int newkey = keys[idx];
-                        BYC *newval = &vals[idx];
+                        newKey = keys[idx];
 
-                        // if the keys match, sum (reduce) the values
-                        if (newkey == myKey)
+                        // if the keys match, get the new value
+                        if (newKey == myKey)
                         {
-                            myVal->bc += newval->bc;
-                            myVal->ibc += newval->ibc;
-                            myVal->yc += newval->yc;
-                            myVal->iyc += newval->iyc;
+                            newVal.bc = vals[idx].bc;
+                            newVal.ibc = vals[idx].ibc;
+                            newVal.yc = vals[idx].yc;
+                            newVal.iyc = vals[idx].iyc;
                         }
                     }
+
+                    __syncthreads();
+
+                    // write the sum to the shm
+                    if (threadIdx.x < (activethds - offset))
+                    {
+                        if (newKey == myKey)
+                        {
+                            myVal->bc += newVal.bc;
+                            myVal->ibc += newVal.ibc;
+                            myVal->yc += newVal.yc;
+                            myVal->iyc += newVal.iyc;
+                        }
+                    }
+
+                    // sync threads
+                    __syncthreads();
                 }
 
                 // only write to global memory if no group or the leader
@@ -767,18 +797,15 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     }
 
     // reuse the shared memory
-    int *l_cpsms = &shmem[0];
-    int *histogram = &l_cpsms[1024];
-    
+    int *histogram = &shmem[0];
     dhCell *topscores = (dhCell *)&histogram[HISTOGRAM_SIZE];
 
     // initialize
     for (int ij = threadIdx.x; ij < HISTOGRAM_SIZE; ij+=blockDim.x)
         histogram[ij] = 0;
 
-    for (int ij = threadIdx.x; ij < 1024; ij+=blockDim.x)
+    for (int ij = threadIdx.x; ij < blockDim.x; ij+=blockDim.x)
     {
-        l_cpsms[ij] = 0;
         topscores[ij].hyperscore = 0;
         topscores[ij].psid = 0;
         topscores[ij].idxoffset = 0;
@@ -787,6 +814,9 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
 
     // wait for shmem to be initialized
     __syncthreads();
+
+    // thread local variable to store ncpsms
+    int cpss = 0;
 
     /* Look for candidate PSMs */
     for (int_t it = minlimit + threadIdx.x; it <= maxlimit; it+= blockDim.x)
@@ -814,7 +844,8 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
                 cell.psid = it;
                 cell.sharedions = shpk;
 
-                l_cpsms[threadIdx.x] +=1;
+                // increment local candidate psms by +1
+                cpss +=1;
 
                 // Update the histogram
                 atomicAdd(&histogram[(int)(cell.hyperscore * 10 + 0.5)], 1);
@@ -851,9 +882,7 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     int cpsms_loc = 0;
 
     // sum the local cpsms to get the count
-    hcp::gpu::cuda::s4::ArraySum(l_cpsms, 1024, &cpsms_loc);
-
-    __syncthreads();
+    hcp::gpu::cuda::s3::blockSum(cpss, cpsms_loc);
 
     // write to the global memory
     if (!threadIdx.x)

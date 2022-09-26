@@ -169,7 +169,7 @@ __global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *
     {
         //mu = 0;
         //beta = 100;
-        evalues[bid] = MAX_HYPERSCORE + 20;
+        evalues[bid] = MAX_HYPERSCORE;
         stt = stt1;
         //ends = end1;
     }
@@ -190,10 +190,6 @@ __global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *
         short sx_size = end1 - stt1 + 1;
         short sx_size_1 = sx_size - 1;
 
-        /* Adjust for negatives */
-        short replacement = 0;
-        hcp::gpu::cuda::s4::rargmax<double_t>(sx, (short)0, sx_size_1, (double)(1e-4), replacement);
-
         /* Survival function s(x) */
         for (int j = tid; j < sx_size; j+=blockDim.x)
         {
@@ -205,18 +201,26 @@ __global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *
             // take care of the case where s(x) > 1
             if (sx[j] > 1)
                 sx[j] = 0.999;
-            // take care of the case where s(x) < 0
-            else if (sx[j] < 0)
+        }
+
+        __syncthreads();
+
+        /* Adjust for negatives */
+        short replacement = 0;
+        hcp::gpu::cuda::s4::rargmax<double_t>(sx, (short)0, sx_size_1, (double)(1e-4), replacement);
+
+        // take care of the case where s(x) < 0
+        for (int j = tid; j < sx_size; j += blockDim.x)
+        {
+            if (sx[j] <= 0)
                 sx[j] = sx[replacement];
         }
 
         __syncthreads();
 
-        for (int ij = tid; ij < sx_size; ij += blockDim.x)
-        {
-            auto myVal = log10f(sx[ij]);
-            sx[ij] = myVal;
-        }
+        // compute log10(s(x))
+        for (int j = tid; j < sx_size; j += blockDim.x)
+            sx[j] = log10f(sx[j]);
 
         __syncthreads();
 
@@ -346,7 +350,7 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
         mu = 0;
         beta = 100;
         stt = stt1;
-        evalues[bid] = MAX_HYPERSCORE + 20;
+        evalues[bid] = MAX_HYPERSCORE;
         //ends = end1;
     }
     else

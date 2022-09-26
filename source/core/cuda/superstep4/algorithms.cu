@@ -348,9 +348,15 @@ __device__ void prefixSum(T *beg, T *end, T *out)
     for (int ij = 0; ij < iterations; ij ++)
     {
         int offset = 1 << ij;
+        T tempVal = 0;
+    
+        if (tid >= offset && tid < size)
+            tempVal = beg[tid - offset];
+
+        __syncthreads();
 
         if (tid >= offset && tid < size)
-            beg[tid] += beg[tid - offset];
+            beg[tid] += tempVal;
 
         __syncthreads();
     }
@@ -372,12 +378,18 @@ __device__ void ArraySum(T *arr, int size, T *sum)
     int iterations = hcp::gpu::cuda::s1::log2ceil(size);
 
     // compute prefix sum
-    for (int ij = 0; ij < iterations; ij ++)
+    for (int ij = 0; ij < iterations; ij++)
     {
         int offset = 1 << ij;
+        T tempVal = 0;
 
         if (tid >= offset && tid < size)
-            arr[tid] += arr[tid - offset];
+            tempVal = arr[tid - offset];
+
+        __syncthreads();
+
+        if (tid >= offset && tid < size)
+            arr[tid] += tempVal;
 
         __syncthreads();
     }

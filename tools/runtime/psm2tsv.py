@@ -53,7 +53,7 @@ if __name__ == '__main__':
         output = args.ofile.lstrip(' ')
     else:
         t = time.localtime()
-        current_time = time.strftime("%m.%d.%Y.%H.%M.%S.%H.%M.%S", t)
+        current_time = time.strftime("%m.%d.%Y.%H.%M.%S", t)
         output = data_dir + '/results.' + current_time + '.tsv'
 
     # Open the TSV files

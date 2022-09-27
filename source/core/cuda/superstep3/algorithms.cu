@@ -261,15 +261,18 @@ __device__ void blockSum(T val, T &sum)
     short warpsize = 32;
     short warpId = tid / warpsize;
     short laneId = tid % warpsize;
-    short size = blockDim.x;
-    short nwarps = size / warpsize;
-    nwarps += (size % warpsize) ? 1 : 0;
+    short bsize = blockDim.x;
+    short nwarps = bsize / warpsize;
+    nwarps += (bsize % warpsize) ? 1 : 0;
 
     // sum a warp
-    unsigned mask  = __ballot_sync(0xffffffff, tid < size);
+    unsigned mask  = __ballot_sync(0xffffffff, tid < bsize);
 
     for (int offset = warpsize / 2; offset > 0; offset /= 2)
-        val += __shfl_down_sync(mask, val, offset);
+    {
+        T tempVal = __shfl_down_sync(mask, val, offset);
+        val += tempVal;
+    }
 
     __syncthreads();
 
@@ -291,7 +294,10 @@ __device__ void blockSum(T val, T &sum)
         mask  = __ballot_sync(0xffffffff, tid < nwarps);
 
         for (int offset = warpsize / 2; offset > 0; offset /= 2)
-            val += __shfl_down_sync(mask, val, offset);
+        {
+            T tempVal = __shfl_down_sync(mask, val, offset);
+            val += tempVal;
+        }
     }
 
     if (tid == 0)

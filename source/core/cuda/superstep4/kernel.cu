@@ -494,7 +494,9 @@ __host__ status_t processResults(Index *index, Queries<spectype_t> *gWorkPtr, in
 
     int numSpecs = gWorkPtr->numSpecs;
 
-    int blockSize = std::min(1024, HISTOGRAM_SIZE);
+    const int nthreads = 1024;
+
+    int blockSize = std::min(nthreads, HISTOGRAM_SIZE);
     // short min_cpsm = params.min_cpsm;
 
     // make sure the data stream is in sync
@@ -743,7 +745,8 @@ __host__ void processResults(double *h_data, float *h_hyp, int *h_cpsms, double 
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_cpsms, h_cpsms, bsize, driver->get_stream()));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_hyp, h_hyp, bsize, driver->get_stream()));
 
-    int blockSize = std::min(1024, HISTOGRAM_SIZE);
+    const int nthreads = 1024;
+    int blockSize = std::min(nthreads, HISTOGRAM_SIZE);
 
 #if defined (TAILFIT) || true
 

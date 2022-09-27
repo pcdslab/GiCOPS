@@ -34,6 +34,9 @@
 
 #include "cuda/driver.hpp"
 
+// for instrumentation
+#include "hicops_instr.hpp"
+
 #include "cuda/superstep1/kernel.hpp"
 #include "cuda/superstep3/kernel.hpp"
 #include "cuda/superstep4/kernel.hpp"
@@ -290,8 +293,8 @@ std::pair<BYC *, int>& getBYC(int chunksize)
         {
             hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async<BYC>(d_BYC, maxchunk * SEARCHINSTANCES, driver->stream[DATA_STREAM]));
 
-            int nblocks = (maxchunk * SEARCHINSTANCES + 1023) / 1024;
-            int nthreads = 1024;
+            const int nthreads = 1024;
+            int nblocks = (maxchunk * SEARCHINSTANCES + nthreads-1) / nthreads;
 
             reset_BYC<<<nblocks, nthreads, KBYTES(1), driver->stream[DATA_STREAM]>>>(d_BYC, maxchunk * SEARCHINSTANCES);
         }
@@ -501,8 +504,8 @@ __host__ status_t MinMaxLimits(Queries<spectype_t> *h_WorkPtr, Index *index, dou
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_precurse, h_WorkPtr->precurse, h_WorkPtr->numSpecs, driver->stream[SEARCH_STREAM]));
 
     const int nthreads = 1024;
-    int nblocks = h_WorkPtr->numSpecs / 1024;
-    nblocks += (h_WorkPtr->numSpecs % 1024 == 0)? 0 : 1;
+    int nblocks = h_WorkPtr->numSpecs / nthreads;
+    nblocks += (h_WorkPtr->numSpecs % nthreads == 0)? 0 : 1;
 
     // add -dM to set for minlimit
     hcp::gpu::cuda::s3::vector_plus_constant<<<nblocks, nthreads, KBYTES(1), driver->get_stream(SEARCH_STREAM)>>>(d_precurse, (float)(-dM), h_WorkPtr->numSpecs);
@@ -561,6 +564,9 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
     // set the shared memory to 48KB
     cudaFuncSetAttribute(SpSpGEMM, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
 
+    static double SpSpGEMMTime = 0.0;
+    MARK_START(SpSpGEMM);
+
     for (int iter = 0 ; iter < niters ; iter++)
     {
         int nblocks = itersize;
@@ -571,11 +577,15 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
             nblocks = nspectra - iter * itersize;
 
         hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(48), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter * itersize, d_BYC, maxchunk, d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
-        
+
         // synchronize the stream
         driver->stream_sync(SEARCH_STREAM);
-
     }
+
+    MARK_END(SpSpGEMM);
+
+    SpSpGEMMTime += ELAPSED_SECONDS(SpSpGEMM);
+    std::cout << "SpSpGEMM Time: " << SpSpGEMMTime << std::endl;
 
     return status;
 }

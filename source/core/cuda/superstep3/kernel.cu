@@ -905,6 +905,8 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     for (int ii = threadIdx.x; ii < HISTOGRAM_SIZE; ii+=blockDim.x)
         survival[ii] += histogram[ii];
 
+    __syncthreads();
+
     // reset the bycPtr
     for (int f = minlimit + threadIdx.x; f <= maxlimit; f += blockDim.x)
     {

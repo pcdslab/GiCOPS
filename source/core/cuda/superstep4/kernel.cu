@@ -370,11 +370,6 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
         short sx_size = end1 - stt1 + 1;
         short sx_size_1 = sx_size - 1;
 
-        /* Adjust for negatives */
-        short replacement = 0;
-
-        hcp::gpu::cuda::s4::rargmax<double_t>(sx, (short)0, sx_size_1, (double)(1e-4), replacement);
-
         /* Survival function s(x) */
         for (int j = tid; j < sx_size; j+=blockDim.x)
         {
@@ -386,18 +381,26 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
             // take care of the case where s(x) > 1
             if (sx[j] > 1)
                 sx[j] = 0.999;
-            // take care of the case where s(x) < 0
-            else if (sx[j] < 0)
+        }
+
+        __syncthreads();
+
+        /* Adjust for negatives */
+        short replacement = 0;
+        hcp::gpu::cuda::s4::rargmax<double_t>(sx, (short)0, sx_size_1, (double)(1e-4), replacement);
+
+        // take care of the case where s(x) < 0
+        for (int j = tid; j < sx_size; j += blockDim.x)
+        {
+            if (sx[j] <= 0)
                 sx[j] = sx[replacement];
         }
 
         __syncthreads();
 
-        for (int ij = tid; ij < sx_size; ij += blockDim.x)
-        {
-            auto myVal = log10f(sx[ij]);
-            sx[ij] = myVal;
-        }
+        // compute log10(s(x))
+        for (int j = tid; j < sx_size; j += blockDim.x)
+            sx[j] = log10f(sx[j]);
 
         __syncthreads();
 
@@ -465,13 +468,13 @@ __global__ void TailFit(double_t *data, float *hyps, int *cpsms, double *evalues
         __syncthreads();
 
         hcp::gpu::cuda::s4::LinearFit<double_t>(X, sx, sx_size, &mu, &beta);
+
+        /* Estimate the log(s(x)) */
+        double_t lgs_x = (mu * hyp) + beta;
+
+        /* Compute the e(x) = n * s(x) = n * 10^(lg(s(x))) */
+        evalues[bid] = vaa * pow(10.0, lgs_x);
     }
-
-    /* Estimate the log(s(x)) */
-    double_t lgs_x = (mu * hyp) + beta;
-
-    /* Compute the e(x) = n * s(x) = n * 10^(lg(s(x))) */
-    evalues[bid] = vaa * pow(10.0, lgs_x);
 
 }
 

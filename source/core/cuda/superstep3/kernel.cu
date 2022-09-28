@@ -113,7 +113,7 @@ __global__ void resetdScores(double *survival, int *cpsms, dhCell *topscores);
 
 extern __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint *d_bA, uint *d_iA, int dF, int qspeclen, int speclen, int minlimit, int maxlimit, int maxmass, int scale);
 
-extern __device__ void getMaxdhCell(dhCell *topscores, dhCell *out);
+extern __device__ void getMaxdhCell(dhCell &topscores, dhCell &out);
 
 extern __device__ void getMinsurvival(double_t *survival, double_t *out);
 
@@ -809,22 +809,21 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
 
     // reuse the shared memory
     int *histogram = &shmem[0];
-    dhCell *topscores = (dhCell *)&histogram[HISTOGRAM_SIZE];
 
     // initialize
     for (int ij = threadIdx.x; ij < HISTOGRAM_SIZE; ij+=blockDim.x)
         histogram[ij] = 0;
 
-    for (int ij = threadIdx.x; ij < blockDim.x; ij+=blockDim.x)
-    {
-        topscores[ij].hyperscore = 0;
-        topscores[ij].psid = 0;
-        topscores[ij].idxoffset = 0;
-        topscores[ij].sharedions = 0;
-    }
-
     // wait for shmem to be initialized
     __syncthreads();
+
+    // thread local variable to store topscores
+    dhCell topscores;
+
+    topscores.hyperscore = 0;
+    topscores.psid = 0;
+    topscores.idxoffset = 0;
+    topscores.sharedions = 0;
 
     // thread local variable to store ncpsms
     int cpss = 0;
@@ -861,12 +860,12 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
                 // Update the histogram
                 atomicAdd(&histogram[(int)(cell.hyperscore * 10 + 0.5)], 1);
 
-                if (cell.hyperscore > topscores[threadIdx.x].hyperscore)
+                if (cell.hyperscore > topscores.hyperscore)
                 {
-                    topscores[threadIdx.x].hyperscore = cell.hyperscore;
-                    topscores[threadIdx.x].psid       = cell.psid;
-                    topscores[threadIdx.x].idxoffset  = cell.idxoffset;
-                    topscores[threadIdx.x].sharedions = cell.sharedions;
+                    topscores.hyperscore = cell.hyperscore;
+                    topscores.psid       = cell.psid;
+                    topscores.idxoffset  = cell.idxoffset;
+                    topscores.sharedions = cell.sharedions;
                 }
             }
         }
@@ -877,10 +876,11 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     dhCell l_topscore;
 
     // get max dhcell
-    hcp::gpu::cuda::s3::getMaxdhCell(topscores, &l_topscore);
+    hcp::gpu::cuda::s3::getMaxdhCell(topscores, l_topscore);
 
     __syncthreads();
 
+    // write the max dhcell to global memory
     if (!threadIdx.x && (l_topscore.hyperscore > d_topscore[qnum].hyperscore))
     {
         d_topscore[qnum].hyperscore = l_topscore.hyperscore;
@@ -895,16 +895,18 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     // sum the local cpsms to get the count
     hcp::gpu::cuda::s3::blockSum(cpss, cpsms_loc);
 
-    // write to the global memory
+    // add to the global memory sum
     if (!threadIdx.x)
         *cpsms = *cpsms + cpsms_loc;
 
+    // need this to avoid race conditions. Why?
     __syncthreads();
 
     // copy histogram to the global memory
     for (int ii = threadIdx.x; ii < HISTOGRAM_SIZE; ii+=blockDim.x)
         survival[ii] += histogram[ii];
 
+    // need this to avoid race conditions. Why?
     __syncthreads();
 
     // reset the bycPtr

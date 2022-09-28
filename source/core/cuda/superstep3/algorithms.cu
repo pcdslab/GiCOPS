@@ -168,7 +168,7 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
 
 // -------------------------------------------------------------------------------------------- //
 
-__device__ void getMaxdhCell(dhCell *topscores, dhCell *out)
+__device__ void getMaxdhCell(dhCell &topscores, dhCell &out)
 {
     int tid = threadIdx.x;
     int warpsize = 32;
@@ -178,8 +178,8 @@ __device__ void getMaxdhCell(dhCell *topscores, dhCell *out)
     int nthreads = blockDim.x;
 
     // get the max element
-    int myIdx = threadIdx.x;
-    float myhScore = topscores[myIdx].hyperscore;
+    int myIdx = tid;
+    float myhScore = topscores.hyperscore;
 
     unsigned mask  = __ballot_sync(0xffffffff, tid < nthreads);
 
@@ -199,6 +199,7 @@ __device__ void getMaxdhCell(dhCell *topscores, dhCell *out)
 
     __shared__ float lochScore[32];
     __shared__ int locIdx[32];
+    __shared__ dhCell thetopscore;
 
     if (laneId == 0)
     {
@@ -242,12 +243,26 @@ __device__ void getMaxdhCell(dhCell *topscores, dhCell *out)
 
     // the final value should be at location zero
     if (tid == 0)
+        locIdx[0] = myIdx;
+
+    __syncthreads();
+
+    // write the topscore at the shared memory
+    if (tid == locIdx[0])
     {
-        out->hyperscore = topscores[myIdx].hyperscore;
-        out->psid       = topscores[myIdx].psid;
-        out->idxoffset  = topscores[myIdx].idxoffset;
-        out->sharedions = topscores[myIdx].sharedions;
+        thetopscore.hyperscore = topscores.hyperscore;
+        thetopscore.psid = topscores.psid;
+        thetopscore.idxoffset = topscores.idxoffset;
+        thetopscore.sharedions = topscores.sharedions;
     }
+
+    __syncthreads();
+
+    // pick the topscore from the shared memory
+    out.hyperscore = thetopscore.hyperscore;
+    out.psid = thetopscore.psid;
+    out.idxoffset = thetopscore.idxoffset;
+    out.sharedions = thetopscore.sharedions;
 
     return;
 }

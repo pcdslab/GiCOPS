@@ -107,11 +107,16 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
     int tid = threadIdx.x;
     short bucket = (2*dF+1);
 
-    int lbound = 0;
-    int ubound = -1;
-
     // total ions with mass +-dF
     int irange = qspeclen * bucket;
+
+    for (int a = tid; a < irange; a+=blockDim.x)
+    {
+        minions[a] = 0;
+        maxions[a] = -1;
+    }
+
+    __syncthreads();
 
     // for all ions
     for (int ion = tid; ion < irange ; ion += blockDim.x)
@@ -143,21 +148,17 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
             int target = minlimit * speclen;
 
             // compute lower bound
-            lower_bound(data_ptr, data_size, &lbound, target);
+            lower_bound(data_ptr, data_size, &minions[ion], target);
+
+            __threadfence_block();
 
             // upperbound limit
             target = (((maxlimit + 1) * speclen) - 1);
 
-            upper_bound(data_ptr, data_size, &ubound, target);
+            upper_bound(data_ptr, data_size, &maxions[ion], target);
+
+            __threadfence_block();
         }
-    }
-
-    __syncthreads();
-
-    for (int a = tid; a < irange; a+=blockDim.x)
-    {
-        minions[a] = lbound;
-        maxions[a] = ubound;
     }
 
     __syncthreads();

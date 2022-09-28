@@ -570,7 +570,7 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
     for (int iter = 0 ; iter < niters ; iter++)
     {
         int nblocks = itersize;
-        int blocksize = 1024;
+        int blocksize = 320; // block size of 256 or 320 are good for better load factor 
 
         // if last iteration, adjust the number of blocks
         if (iter == niters - 1)

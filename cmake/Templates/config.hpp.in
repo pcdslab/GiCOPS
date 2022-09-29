@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020  Muhammad Haseeb and Fahad Saeed
+ * Copyright (C) 2021  Muhammad Haseeb and Fahad Saeed
  * Florida International University, Miami, FL
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,6 +22,9 @@
 
 // use MPI based build
 #cmakedefine USE_MPI
+
+// enable GPU based build
+#cmakedefine USE_GPU
 
 // enable Timemory based instrumentation
 #cmakedefine USE_TIMEMORY
@@ -58,8 +61,11 @@
 // Max RX buffer size = 512MB 
 #define  RXBUFFERSIZE                 (512 * 1024 * 1024)
 
-// chunk size in number ions per chunk (def: 2 billion)
-#define MAX_IONS                       0x80000000
+// chunk size in number ions per chunk (def: 1 billion)
+#define MAX_IONS                       0x40000000
+
+// number of X-axis samples in the histogram
+#define Xsamples                128
 
 // FUTURE:  Only b- and y-ions used in current implementation
 
@@ -84,3 +90,20 @@
                                         IMMONIUM)
 
 // -------------------------------------------------------------------------------- //
+
+// Calculates index in Amino Acid mass array
+#define AAidx(x)                 (x - 'A')
+
+// Mass of water and H+
+constexpr float H2O = 18.015f;
+constexpr float PROTON = 1.00727647f;
+
+// Not an Amino Acid (NAA)
+constexpr float NAA = -20000;
+
+// data type to use for storing and retriving preprocessed spectra
+// valid options are: int (default) and float
+using spectype_t = int;
+
+#define ALPHABETS      26
+#define MAXZ           6

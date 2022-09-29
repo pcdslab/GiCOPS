@@ -18,14 +18,14 @@
  */
 
 #include "ms2prep.hpp"
-
+#include "cuda/superstep2/kernel.hpp"
 //
 // TODO: insert instrumentation for the work performed in this file
 // Specially measure the compute to overhead (comm and I/O) ratio.
 //
 
 // external query filenames
-extern vector<string_t> queryfiles;
+extern std::vector<string_t> queryfiles;
 
 // extern params
 extern gParams params;
@@ -50,22 +50,6 @@ T getPartitionSize(T isize)
     return loc_size;
 }
 
-//
-// FUNCTION: barrier (wrapper for MPI_Barrier)
-//
-status_t barrier()
-{
-    return MPI_Barrier(MPI_COMM_WORLD);
-}
-
-//
-// TODO: still to implement
-//
-status_t allgather()
-{
-    return SLM_SUCCESS;
-}
-
 } // namespace mpi
 
 namespace ms2
@@ -78,8 +62,9 @@ status_t synchronize()
 {
     status_t status = SLM_SUCCESS;
 
-    // synchronize
-    status = hcp::mpi::barrier();
+    // barrier only if more than 1 nodes
+    if (params.nodes > 1)
+        status = hcp::mpi::barrier();
 
     // write index to file
     MSQuery::write_index();
@@ -102,17 +87,21 @@ MSQuery **& get_instance()
 status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
 {
     status_t status = SLM_SUCCESS;
-    bool_t qfindex = false;
-
     int_t nfiles = queryfiles.size();
+
+    int_t cputhreads = params.threads;
+
+#if defined(USE_GPU)
+    int_t gputhreads = 2 ; // fixme: params.gputhreads;
+    cputhreads -= gputhreads;
+#endif // defined(USE_GPU)
 
     // get the ptrs instance
     MSQuery **ptrs = get_instance();
 
     if (ptrs == nullptr)
         status = ERR_INVLD_PTR;
-
-    if (status == SLM_SUCCESS)
+    else
     {
         /* Initialize the queue with already created nfiles */
         *qfPtrs = new lwqueue<MSQuery*>(nfiles, false);
@@ -124,11 +113,11 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
         // get local partition size
         auto pfiles = hcp::mpi::getPartitionSize(nfiles);
 
-        if (params.nodes > 1)
-            MSQuery::init_index();
+        // initialize the MSQuery index
+        bool summaryExists = MSQuery::init_index(queryfiles);
 
-        // if pfiles > 0
-        if (pfiles) 
+        // if pfiles > 0 and !summaryExists
+        if (pfiles && !summaryExists)
         {
             // fill the vector with locally processed MS2 file indices
             std::vector<int_t> ms2local(pfiles);
@@ -140,6 +129,92 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
             std::generate(std::begin(ms2local) + 1, std::end(ms2local), 
                           [n=params.myid] () mutable { return n += params.nodes; });
 
+#if defined(USE_GPU)
+
+            // initialize a thread-safe MSQuery queue for CPU + GPU processing
+            std::queue<int_t> ms2QueueIdx;
+            std::mutex ms2QueueMutex;
+
+            // fill with correct file indices
+            for (auto loc_fid : ms2local)
+                ms2QueueIdx.push(loc_fid);
+
+            // ------------------------------------------------------------ //
+
+            //
+            // lambda function to initialize the MSQuery instances
+            // 
+            auto workerthread = [&](bool gpu)
+            {
+                auto loc_fid = 0;
+
+                while (true)
+                {
+                    bool breakloop = false;
+
+                    // code block for unique_lock
+                    {
+                        std::unique_lock<std::mutex> lock(ms2QueueMutex);
+
+                        if (ms2QueueIdx.empty())
+                            breakloop = true;
+                        else
+                        {
+                            loc_fid = ms2QueueIdx.front();
+                            ms2QueueIdx.pop();
+                        }
+                    }
+
+                    // break the loop here
+                    if (breakloop)
+                        break;
+
+                    // check if working with GPU
+                    if (gpu)
+                        // TODO: GPU kernel is needed here.
+                        hcp::gpu::cuda::s2::preprocess(ptrs[loc_fid], queryfiles[loc_fid], loc_fid);
+                    else
+                        ptrs[loc_fid]->initialize(&queryfiles[loc_fid], loc_fid);
+                
+                // archive the index if using MPI
+#ifdef USE_MPI
+                    ptrs[loc_fid]->archive(loc_fid);
+#endif // USE_MPI
+                }
+            };
+
+            // ------------------------------------------------------------ //
+
+            // launch CPU threads
+            std::vector<std::thread> wThreads(gputhreads + cputhreads);
+
+            for (int gth = 0 ; gth < gputhreads; gth++)
+                wThreads.push_back(std::move(std::thread(workerthread, true)));
+
+            for (int cth = 0 ; cth < cputhreads; cth++)
+                wThreads.push_back(std::move(std::thread(workerthread, false)));
+
+            // make sure all GPU threads are done
+            for (auto& wth : wThreads)
+            {
+                if (wth.joinable())
+                {
+                    try
+                    {
+                        wth.join();
+                    }
+                    catch (const std::system_error& e)
+                    {
+                        std::cerr << "Thread Joining Error: " << e.what() << std::endl;
+                        std::cerr << "Ignoring as simply joined too soon.." << std::endl;
+                    }
+                }
+            }
+
+            // clear the vector
+            wThreads.clear();
+
+#else
 #ifdef USE_OMP
 #pragma omp parallel for schedule (dynamic, 1)
 #endif/* _OPENMP */
@@ -147,18 +222,40 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
             {
                 auto loc_fid = ms2local[fid];
                 ptrs[loc_fid]->initialize(&queryfiles[loc_fid], loc_fid);
-
-                // archive the index variables
-                ptrs[loc_fid]->archive(loc_fid);
+#ifdef USE_MPI
+                if (params.nodes > 1)
+                    ptrs[loc_fid]->archive(loc_fid);
+#endif // USE_MPI
             }
+
+#endif // defined(USE_GPU)
+
+            // in case of one node, we need to write in order
+            if (params.nodes == 1)
+            {
+                for (auto fid = 0; fid < pfiles; fid++)
+                {
+                    auto loc_fid = ms2local[fid];
+                    ptrs[loc_fid]->archive(loc_fid);
+                }
+            }
+
+            // clear ms2local vector
+            ms2local.clear();
         }
 
+        // synchronize & write index if needed
+        status = hcp::ms2::synchronize();
+
+        // ------------------------------------------------------------ //
+
         //
-        // Synchronize superstep 2
+        // Synchronize global data summary
         //
-        if (params.nodes > 1)
+
+        // if more than one nodes or summary file exists
+        if (params.nodes > 1 || summaryExists)
         {
-            status = hcp::ms2::synchronize();
             info_t *findex = new info_t[nfiles];
 
             MSQuery::read_index(findex, nfiles);
@@ -174,6 +271,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
                     ptrs[fid]->vinitialize(&queryfiles[fid], fid);
                 }
             }
+
             delete[] findex;
         }
 
@@ -199,9 +297,9 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
         nBatches = ptrs[nfiles-1]->Curr_chunk() + ptrs[nfiles-1]->Nqchunks();
 
         if (params.myid == 0)
-            std::cout << "\nDataset Size = " << dssize << std::endl << std::endl;
+            std::cout << "Dataset Size = " << dssize << std::endl << std::endl;
     }
-    
+
     return status;
 }
 

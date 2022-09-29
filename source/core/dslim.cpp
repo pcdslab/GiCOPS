@@ -18,6 +18,10 @@
  */
 
 #include "dslim.h"
+#include "cuda/superstep1/kernel.hpp"
+#include "cuda/superstep3/kernel.hpp"
+
+
 using namespace std;
 
 /* Global Variables */
@@ -26,10 +30,6 @@ BYICount      *Score   = NULL;
 uint_t reduce = 0;
 
 extern gParams params;
-
-#ifdef GENFEATS
-BOOL          *features;
-#endif
 
 
 /* FUNCTION: DSLIM_Construct
@@ -46,6 +46,8 @@ BOOL          *features;
 status_t DSLIM_Construct(Index *index)
 {
     status_t status = SLM_SUCCESS;
+
+
     uint_t threads = params.threads;
     uint_t maxz = params.maxz;
     uint_t peplen_1 = index->pepIndex.peplen - 1;
@@ -53,7 +55,8 @@ status_t DSLIM_Construct(Index *index)
     double_t maxmass = params.max_mass;
     uint_t scale = params.scale;
 
-    if (status == SLM_SUCCESS && SpecArr == NULL)
+    // allocate memory to temporarily store the fragment ion data
+    if (status == SLM_SUCCESS && SpecArr == NULL && !params.useGPU)
     {
         /* Spectra Array (SA) */
         SpecArr = new uint_t[MAX_IONS];
@@ -61,8 +64,8 @@ status_t DSLIM_Construct(Index *index)
         /* Check if Spectra Array has been allocated */
         if (SpecArr == NULL)
             status = ERR_BAD_MEM_ALLOC;
-
     }
+
 
     if (status == SLM_SUCCESS)
     {
@@ -75,18 +78,28 @@ status_t DSLIM_Construct(Index *index)
             /* Distributed SLM Ions Array construction */
             for (uint_t chno = 0; chno < index->nChunks && status == SLM_SUCCESS; chno++)
             {
-                /* Construct each DSLIM chunk in Parallel */
-                status = DSLIM_ConstructChunk(threads, index, chno);
+#if defined(USE_GPU)
 
-                /* Apply SLM-Transform on the chunk */
-                if (status == SLM_SUCCESS)
-                    status = DSLIM_SLMTransform(threads, index, chno);
+                if (params.useGPU)
+                    // construct index on the GPU
+                    status = hcp::gpu::cuda::s1::ConstructIndexChunk(index, chno);
+                else
+#endif // defined(USE_GPU)
+                {
+                    /* Construct each DSLIM chunk in Parallel */
+                    status = DSLIM_ConstructChunk(threads, index, chno);
 
+                    /* Apply SLM-Transform on the chunk */
+                    if (status == SLM_SUCCESS)
+                        status = DSLIM_SLMTransform(threads, index, chno);
+                }
             }
         }
     }
 
-    if (status == SLM_SUCCESS)
+
+    // construct bA on the CPU
+    if (status == SLM_SUCCESS && !params.useGPU)
     {
         const uint_t speclen = peplen_1 * maxz * iSERIES;
 
@@ -125,13 +138,11 @@ status_t DSLIM_Construct(Index *index)
         }
     }
 
-
-    /* Optimize the CFIR index chunks */
-    if (status == SLM_SUCCESS)
+    // stablize the iA data
+    if (status == SLM_SUCCESS && !params.useGPU)
     {
         for (uint_t chunk_number = 0; chunk_number < index->nChunks; chunk_number++)
             status = DSLIM_Optimize(index, chunk_number);
-
     }
 
     return status;
@@ -162,7 +173,7 @@ status_t DSLIM_AllocateMemory(Index *index)
     uint_t speclen = ((index->pepIndex.peplen-1) * iSERIES * maxz);
 
     /* Initialize DSLIM pepChunks */
-    index->ionIndex = new SLMchunk[Chunks];
+    index->ionIndex = new spmat_t[Chunks];
 
     if (index->ionIndex != NULL)
     {
@@ -225,7 +236,7 @@ status_t DSLIM_ConstructChunk(uint_t threads, Index *index, uint_t chunk_number)
     const uint_t scale = params.scale;
 
     /* Check if this chunk is the last chunk */
-    BOOL lastChunk = (chunk_number == (index->nChunks - 1))? true: false;
+    bool lastChunk = (chunk_number == (index->nChunks - 1))? true: false;
 
     uint_t *BAPtrs[threads];
     uint_t *bA = new uint_t[(int_t)(threads * scale * maxmass)];
@@ -370,7 +381,6 @@ status_t DSLIM_SLMTransform(uint_t threads, Index *index, uint_t chunk_number)
     uint_t *iAPtr = index->ionIndex[chunk_number].iA;
     uint_t iAsize = size * speclen;
 
-    /* Construct DSLIM.iA */
 #ifdef USE_OMP
 #pragma omp parallel for num_threads(threads) schedule(static)
 #endif /* USE_OMP */
@@ -399,10 +409,12 @@ status_t DSLIM_InitializeScorecard(Index *index, uint_t idxs)
     {
         if (index[ii].chunksize > sz2)
             sz2 = index[ii].chunksize;
-
     }
 
-    sAize = std::min(sz2, sAize);
+    // no need to do the min here
+    //sAize = std::min(sz2, sAize);
+    sAize = sz2;
+
     Score = new BYICount[params.threads];
 
     if (Score != NULL)
@@ -433,6 +445,12 @@ status_t DSLIM_InitializeScorecard(Index *index, uint_t idxs)
         status = ERR_INVLD_MEMORY;
     }
 
+#if defined (USE_GPU)
+
+    if (params.useGPU)
+        hcp::gpu::cuda::s3:: getBYC(sAize);
+
+#endif // USE_GPU
     return status;
 }
 
@@ -659,7 +677,7 @@ status_t DSLIM_DeallocateIonIndex(Index *index)
     /* Deallocate all the DSLIM chunks */
     for (uint_t chno = 0; chno < index->nChunks; chno++)
     {
-        SLMchunk curr_chunk = index->ionIndex[chno];
+        spmat_t curr_chunk = index->ionIndex[chno];
 
         if (curr_chunk.bA != NULL)
         {
@@ -719,14 +737,28 @@ status_t DSLIM_DeallocatePepIndex(Index *index)
 
 status_t DSLIM_DeallocateSpecArr()
 {
-    if (SpecArr != NULL)
+#if defined(USE_GPU)
+
+    if (params.useGPU)
     {
-        delete[] SpecArr;
-        SpecArr= NULL;
+        // free the CSR columns
+        hcp::gpu::cuda::s1::freebA();
+
+        // free the fragment ion data memory on GPU
+        hcp::gpu::cuda::s1::freeFragIon();
+    }
+    else
+#endif // defined(USE_GPU)
+    {
+        // free SpecArr on CPU
+        if (SpecArr != nullptr)
+        {
+            delete[] SpecArr;
+            SpecArr= nullptr;
+        }
     }
 
-    /* Nothing really to return
-     * so success */
+    // nothing really to return so success
     return SLM_SUCCESS;
 }
 
@@ -760,6 +792,19 @@ status_t DSLIM_DeallocateSC()
 
     }
 
+#if defined (USE_GPU)
+
+    if (params.useGPU)
+    {
+        // free the BYC scorecard memory on GPU
+        hcp::gpu::cuda::s3::freeBYC();
+
+        // free the Scorecard memory on GPU
+        hcp::gpu::cuda::s3::freeScorecard();
+    }
+
+#endif // USE_GPU
+
     return SLM_SUCCESS;
 }
 
@@ -767,16 +812,16 @@ int_t DSLIM_GenerateIndex(Index *index, uint_t key)
 {
     int_t value = -1;
 
-    DistPolicy policy = params.policy;
+    DistPolicy_t policy = params.policy;
 
     uint_t csize = index->lclpepCnt;
 
-    if (policy == _chunk)
-        value = (params.myid * csize) + key;
-    else if (policy == _cyclic)
+    if (policy == cyclic)
         value = (key * params.nodes) + params.myid;
-    else if (policy == _zigzag)
-        value = false;
+    else if (policy == chunk)
+        value = (params.myid * csize) + key;
+    else if (policy == zigzag)
+        value = -1;
 
     return value;
 }

@@ -87,18 +87,8 @@ status_t LBE_Distribute(Index *index);
  * OUTPUT:
  * @status: Status of execution
  */
-status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen);
+status_t LBE_CountPeps(string_t &filename, Index *index, uint_t explen);
 
 status_t LBE_CreatePartitions(Index *index);
 
 BOOL LBE_ApplyPolicy(Index *index,  BOOL pepmod, uint_t key);
-
-/*
- * FUNCTION: LBE_PrintHeader
- *
- * DESCRIPTION: Prints the LBE header
- *
- * INPUT : none
- * OUTPUT: none
- */
-VOID   LBE_PrintHeader();

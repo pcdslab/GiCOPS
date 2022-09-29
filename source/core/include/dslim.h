@@ -150,11 +150,15 @@ status_t DSLIM_DeallocateIonIndex(Index *);
 
 status_t DSLIM_InitDistScore();
 
+// FIXME
 #ifdef USE_MPI
 // declare this class here
 class DSLIM_Comm;
 
 status_t DSLIM_CarryForward(Index *, DSLIM_Comm *, expeRT *, hCell *, int_t);
+
+void AddliBuff(ebuffer *liBuff);
+
 #endif /* USE_MPI */
 
 status_t DSLIM_DistScoreManager();
@@ -166,6 +170,14 @@ status_t DSLIM_DeallocateSC();
 status_t DSLIM_DeallocateSpecArr();
 
 status_t DSLIM_SearchManager(Index *);
+
+status_t DistributedSearch(Index *);
+
+status_t DSLIM_Setup_Handles();
+
+status_t DSLIM_Destroy_Handles(Index *index);
+
+status_t DSLIM_MS2Initialize();
 
 /* FUNCTION: DSLIM_QuerySpectrum
  *
@@ -181,7 +193,7 @@ status_t DSLIM_SearchManager(Index *);
  * OUTPUT:
  * @status: Status of execution
  */
-status_t DSLIM_QuerySpectrum(Queries *ss, Index *index, uint_t indexchunks);
+status_t DSLIM_QuerySpectrum(Queries<int> *ss, Index *index, uint_t indexchunks, int);
 
 /* FUNCTION: DSLIM_WriteLIBSVM
  *

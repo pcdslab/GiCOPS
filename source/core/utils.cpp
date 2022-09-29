@@ -20,86 +20,16 @@
 #include <thread>
 #include "utils.h"
 #include "slm_dsts.h"
-
-
-/* Calculates index in Amino Acid mass array */
-#define AAidx(x)                 (x - 'A')
-
-/* Mass of water - Added to each peptide mass */
-#define H2O                      18.015f
-#define PROTON                   1.00727647
-
-/* Not an Amino Acid (NAA) mass */
-#define NAA                      -20000
+#include "cuda/superstep1/kernel.hpp"
+#include "aamasses.hpp"
 
 /* Global Mods Info  */
 SLM_vMods      gModInfo;
 
 extern gParams params;
 
-/* Amino Acids Masses */
-float_t AAMass[26] = {
-                    71.03712,   // A
-                    NAA,        // B
-                    103.00919,  // C
-                    115.030,    // D
-                    129.0426,   // E
-                    147.068,    // F
-                    57.02146,   // G
-                    137.060,    // H
-                    113.084,    // I
-                    NAA,        // J
-                    128.094,    // K
-                    113.084,    // L
-                    131.0405,   // M
-                    114.043,    // N
-                    NAA,        // O
-                    97.0527,    // P
-                    128.05858,  // Q
-                    156.1012,   // R
-                    87.032,     // S
-                    101.0476,   // T
-                    NAA,        // U
-                    99.06841,   // V
-                    186.0793,   // W
-                    NAA,        // X
-                    163.0633,   // Y
-                    NAA,        // Z
-                    };
-
-/* Static Mods for Amino Acids */
-float_t StatMods[26] = {
-                      0,        // A
-                      0,        // B
-                      57.021464,// C + 57.02
-                      0,        // D
-                      0,        // E
-                      0,        // F
-                      0,        // G
-                      0,        // H
-                      0,        // I
-                      0,        // J
-                      0,        // K
-                      0,        // L
-                      0,        // M
-                      0,        // N
-                      0,        // O
-                      0,        // P
-                      0,        // Q
-                      0,        // R
-                      0,        // S
-                      0,        // T
-                      0,        // U
-                      0,        // V
-                      0,        // W
-                      0,        // X
-                      0,        // Y
-                      0,        // Z
-                      };
-
-/* Macros to extract AA masses */
+// Macro to extract AA masses
 #define GETAA(x,z)                 ((AAMass[AAidx(x)]) + (StatMods[AAidx(x)]) + ((PROTON) * (z)))
-
 
 /*
  * FUNCTION: UTILS_GetNumProcs
@@ -241,8 +171,8 @@ float_t UTILS_GenerateSpectrum(char_t *seq, uint_t len, uint_t *Spectrum)
      *        peptide sequence */
     if (mass > 0)
     {
-        /* Set the array to zeros */
-        std::memset(Spectrum, 0x0, (sizeof(uint_t) * (iSERIES * maxz * (len-1))));
+        // vector for floating point spectrum
+        std::vector<float_t> f_Spectrum(iSERIES * maxz * (len-1));
 
         /* Generate Spectrum */
         for (uint_t z = 0; z < maxz; z++)
@@ -254,22 +184,42 @@ float_t UTILS_GenerateSpectrum(char_t *seq, uint_t len, uint_t *Spectrum)
             /* Mass of fragment = [M + (z-1)H]/z */
 
             /* First b-ion */
-            Spectrum[bstart] = (uint_t)((GETAA(seq[0], z+1) * scale)/(z+1));
+            f_Spectrum[bstart] = GETAA(seq[0], z+1);
             /* First y-ion */
-            Spectrum[ystart] = (uint_t)(((GETAA(seq[len-1], z+1) + H2O) * scale)/(z+1));
+            f_Spectrum[ystart] = GETAA(seq[len-1], z+1) + H2O;
 
             /* Loop until length - 1 only */
             for (uint_t l = 1; l < len - 1; l++)
             {
                 /* Extract b-ions */
-                Spectrum[bstart + l] = Spectrum[bstart + (l-1)] +
-                                       (uint_t)((GETAA(seq[l], 0) * scale)/(z+1));
+                f_Spectrum[bstart + l] = f_Spectrum[bstart + (l-1)] + GETAA(seq[l], 0);
 
                 /* Extract y-ions */
-                Spectrum[ystart + l] = Spectrum[ystart + (l-1)] +
-                                       (uint_t)(((GETAA(seq[len-1-l], 0)) * scale)/(z+1));
+                f_Spectrum[ystart + l] = f_Spectrum[ystart + (l-1)] + GETAA(seq[len-1-l], 0);
             }
         }
+
+        // integrize and copy to Spectrum
+        for (uint_t z = 0; z < maxz; z++)
+        {
+            /* Indices for b and y series start */
+            uint_t bstart = z * (len - 1);
+            uint_t ystart = z * (len - 1) + maxz * (len - 1);
+
+            /* Loop until length - 1 only */
+            for (uint_t l = 0; l < len - 1; l++)
+            {
+                /* Extract b-ions */
+                Spectrum[bstart + l] = (uint_t)((f_Spectrum[bstart + l] * scale)/(z+1));
+
+                /* Extract y-ions */
+                Spectrum[ystart + l] = (uint_t)((f_Spectrum[ystart + l] * scale)/(z+1));
+            }
+        }
+
+        // clear the vector
+        f_Spectrum.clear();
+
     }
 
     return mass;
@@ -295,8 +245,7 @@ float_t UTILS_CalculatePepMass(AA *seq, uint_t len)
     /* Calculate peptide mass */
     for (uint_t l = 0; l < len; l++)
     {
-        mass += AAMass[AAidx(seq[l])];
-        mass += StatMods[AAidx(seq[l])];
+        mass += AAMass[AAidx(seq[l])] + StatMods[AAidx(seq[l])];
     }
 
     return mass;
@@ -313,13 +262,33 @@ float_t UTILS_CalculatePepMass(AA *seq, uint_t len)
  * OUTPUT:
  * @status: Status of execution
  */
+
+status_t UTILS_SetParams(gParams *params)
+{
+#if defined(USE_GPU)
+
+    if (params->useGPU)
+        // init mods info on GPU as well
+        hcp::gpu::cuda::s1::initParams(params);
+
+#endif // USE_GPU
+    return SLM_SUCCESS;
+}
+
 status_t UTILS_InitializeModInfo(SLM_vMods *vMods)
 {
-    status_t status = SLM_SUCCESS;
-
+    // initialize mod info on CPU
     gModInfo = *vMods;
 
-    return status;
+#if defined(USE_GPU)
+
+    if (params.useGPU)
+        // init mods info on GPU as well
+        hcp::gpu::cuda::s1::initMods(&params.vModInfo);
+
+#endif // defined(USE_GPU)
+
+    return SLM_SUCCESS;
 }
 /*
  * FUNCTION: UTILS_CalculateModMass
@@ -386,7 +355,6 @@ float_t UTILS_GenerateModSpectrum(char_t *seq, uint_t len, uint_t *Spectrum, mod
     const uint_t maxz = params.maxz;
     const uint_t scale = params.scale;
 
-
     char_t modPos[len] = {};
     int_t modNums[MAX_MOD_TYPES] = {};
     int_t modSeen = 0;
@@ -428,6 +396,9 @@ float_t UTILS_GenerateModSpectrum(char_t *seq, uint_t len, uint_t *Spectrum, mod
 
         if (mass > 0)
         {
+            // vector for floating point spectrum
+            std::vector<float> f_Spectrum(iSERIES * maxz * (len-1));
+
             /* Generate Normal Spectrum */
             for (uint_t z = 0; z < maxz; z++)
             {
@@ -438,20 +409,18 @@ float_t UTILS_GenerateModSpectrum(char_t *seq, uint_t len, uint_t *Spectrum, mod
                 /* Mass of fragment = [M + (z-1)H]/z */
 
                 /* First b-ion */
-                Spectrum[bstart] = (uint_t)((GETAA(seq[0], z+1) * scale));
+                f_Spectrum[bstart] = GETAA(seq[0], z+1);
                 /* First y-ion */
-                Spectrum[ystart] = (uint_t)(((GETAA(seq[len-1], z+1) + H2O) * scale));
+                f_Spectrum[ystart] = GETAA(seq[len-1], z+1) + H2O;
 
                 /* Loop until length - 1 only */
                 for (uint_t l = 1; l < len - 1; l++)
                 {
                     /* Extract b-ions */
-                    Spectrum[bstart + l] = Spectrum[bstart + (l - 1)] +
-                                           (uint_t)((GETAA(seq[l], 0) * scale));
+                    f_Spectrum[bstart + l] = f_Spectrum[bstart + (l - 1)] + GETAA(seq[l], 0);
 
                     /* Extract y-ions */
-                    Spectrum[ystart + l] = Spectrum[ystart + (l - 1)] +
-                                           (uint_t)(((GETAA(seq[len-1-l], 0)) * scale));
+                    f_Spectrum[ystart + l] = f_Spectrum[ystart + (l - 1)] + GETAA(seq[len-1-l], 0);
                 }
             }
 
@@ -468,12 +437,11 @@ float_t UTILS_GenerateModSpectrum(char_t *seq, uint_t len, uint_t *Spectrum, mod
                     counter += modPos[l];
 
                     for (uint_t k = 0; k < counter; k++)
-                    {
-                        Spectrum[bstart + l] += gModInfo.vmods[modNums[k]].modMass;
-                    }
+                        f_Spectrum[bstart + l] += static_cast<double>(gModInfo.vmods[modNums[k]].modMass) / scale;
 
-                    /* Divide by charge here */
-                    Spectrum[bstart + l] /= (z + 1);
+
+                    // integrize and write to Spectrum
+                    Spectrum[bstart + l] = (uint_t)(f_Spectrum[bstart + l] * scale /(z + 1));
                 }
             }
 
@@ -490,39 +458,18 @@ float_t UTILS_GenerateModSpectrum(char_t *seq, uint_t len, uint_t *Spectrum, mod
                     counter += modPos[l];
 
                     for (uint_t k = 0; k < counter; k++)
-                    {
-                        Spectrum[ystart + (len - 1) - l] += gModInfo.vmods[modNums[modSeen - 1 - k]].modMass;
-                    }
+                        f_Spectrum[ystart + (len - 1) - l] += static_cast<double>(gModInfo.vmods[modNums[modSeen - 1 - k]].modMass)/scale;
 
-                    /* Divide by charge here */
-                    Spectrum[ystart + (len - 1) - l] /= (z + 1);
+                    // integrize and write to Spectrum
+                    Spectrum[ystart + (len - 1) - l] = (uint_t)(f_Spectrum[ystart + (len - 1) - l] * scale / (z + 1));
                 }
             }
+
+            // clear the vector
+            f_Spectrum.clear();
         }
     }
 
     return mass;
-}
-
-/*
- * FUNCTION: __wrap_memcpy
- *
- * DESCRIPTION: Wrapper function for memcpy@GLIBC2.2.5
- *
- * INPUT:
- * @dest: destination ptr
- * @src : source ptr
- * @size: size in bytes
- *
- * OUTPUT: none
- */
-extern "C"
-{
-#if __GNUC__ < 5
-/* some systems do not have newest memcpy@GLIBC_2.14 - stay with v2.2.5 */
-asm (".symver memcpy, memcpy@GLIBC_2.2.5");
-#endif /* __GNUC__ */
-
-void *__wrap_memcpy(void *dest, const void *src, size_t n) { return memcpy(dest, src, n); }
 }
 

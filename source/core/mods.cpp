@@ -19,6 +19,7 @@
 
 #include "mods.h"
 #include "lbe.h"
+#include "cuda/superstep1/kernel.hpp"
 
 using namespace std;
 
@@ -32,15 +33,15 @@ pepEntry    *modEntries;
 map<AA, int_t> condLookup;
 vector<string_t> tokens;
 uint_t limit = 0;
-ull_t Comb[MAX_COMBS][MAX_COMBS];
 vector<int_t> condList;
+uint_t *varCount;
+
+static auto Comb = hcp::utils::Comb<hcp::utils::maxcombs>();
 
 /* External Variables */
 extern gParams params;
-extern uint_t *varCount;
-
-/* Peptide Sequences */
 extern vector<string_t> Seqs;
+extern vector<float_t> MZs;
 
 /* Static Functions */
 static ull_t count(string_t s);
@@ -49,8 +50,6 @@ static VOID MODS_ModList(string_t peptide, vector<int_t> conditions,
                          int_t total, pepEntry container, int_t letter,
                          bool novel, int_t modsSeen, uint_t refid,
                          uint_t &global, uint_t &local);
-
-static VOID MODS_GenCombinations();
 
 /*
  * FUNCTION: MODS_Initialize
@@ -76,11 +75,8 @@ status_t MODS_Initialize()
 
     limit = stoi(tokens[0]);
 
-    /* Generate all possible combinations pre-handed */
-    (VOID) MODS_GenCombinations();
-
     /* Reset conditions for all letters */
-    for (int_t i = 0; i < 26; i++)
+    for (int_t i = 0; i < ALPHABETS; i++)
     {
         condLookup[allLetters[i]] = -1;
     }
@@ -112,68 +108,12 @@ int_t cmpvarEntries(const VOID* lhs, const void *rhs)
      * smaller the modEntry item.
      */
     if (*a << *b)
-    {
         return 1;
-    }
-
     /* b is larger */
     if (*a >> *b)
-    {
         return -1;
-    }
 
     return 0;
-}
-
-/*
- * FUNCTION: MODS_GenCombinations
- *
- * DESCRIPTION: Generates all nCk required
- *
- * INPUT: none
- *
- * OUTPUT: none
- */
-static VOID MODS_GenCombinations()
-{
-    //run this at start of main to fill Comb with the proper values
-    Comb[0][0] = 1;
-    Comb[1][0] = 1;
-    Comb[1][1] = 1;
-
-    for (int i = 1; i < MAX_COMBS; i++)
-    {
-        Comb[i][0] = 1;
-
-        for (int j = 1; j <= (i + 1) / 2; j++)
-        {
-            Comb[i][j] = Comb[i - 1][j - 1] + Comb[i - 1][j];
-        }
-
-        for (int j = i / 2; j < i; j++)
-        {
-            Comb[i][j] = Comb[i][i - j];
-        }
-
-        Comb[i][i] = 1;
-    }
-}
-
-/*
- * FUNCTION: combine
- *
- * DESCRIPTION: Generates nCk
- *
- * INPUT:
- * @n: n
- * @k: k
- *
- * OUTPUT:
- * @Comb: nCk
- */
-ull_t combine(int n, int k)
-{
-    return Comb[n][k];
 }
 
 /*
@@ -224,7 +164,7 @@ longlong_t partition2(vector<int_t> a, int_t b)
 
     for (int_t i = 0; i < a[0] + 1; i++)
     {
-        sum += combine(a[0], i) * partition2(a2, b - i);
+        sum += Comb[a[0]][i] * partition2(a2, b - i);
     }
 
     return sum;
@@ -399,12 +339,14 @@ static VOID MODS_ModList(string_t peptide, vector<int_t> conditions,
 ull_t MODS_ModCounter()
 {
     ull_t cumulative = 0;
-    string_t conditions = params.modconditions;
+
+    // allocate memory for varCount
+    varCount = new uint_t[Seqs.size() + 1];
 
     /* Return if no mods to generate */
     if (limit > 0)
     {
-        /* Parallel modcounter */
+        // parallel mod counter
 #ifdef USE_OMP
 #pragma omp parallel for num_threads (params.threads) schedule(static) reduction(+: cumulative)
 #endif // USE_OMP
@@ -414,17 +356,34 @@ ull_t MODS_ModCounter()
             cumulative += varCount[i];
         }
 
-        uint_t count = varCount[0];
-        varCount[0] = 0;
+        // compute prefix sum
 
-        for (uint_t ii = 1; ii <= Seqs.size(); ii++)
+#if defined(USE_GPU)
+        if (params.useGPU)
         {
-            uint_t tmpcount = varCount[ii];
-            varCount[ii] = varCount[ii - 1] + count;
-            count = tmpcount;
+            // compute prefix scan on GPU
+            hcp::gpu::cuda::s1::exclusiveScan<uint_t>(varCount, Seqs.size() + 1, 0);
+        }
+        else
+#endif // defined(USE_GPU)
+        {
+            // compute on CPU
+            uint_t count = varCount[0];
+            varCount[0] = 0;
+
+            // compute partial sums
+            for (uint_t ii = 1; ii <= Seqs.size(); ii++)
+            {
+                uint_t tmpcount = varCount[ii];
+                varCount[ii] = varCount[ii - 1] + count;
+                count = tmpcount;
+            }
         }
 
-        assert (varCount[Seqs.size()] == cumulative);
+        // assert only works in debug mode
+
+        // if (varCount[Seqs.size()] != cumulative) 
+        //    std::cerr << "FATAL: varCount[Seqs.size()] != cumulative for peplen: " << Seqs[0].size() << std::endl;
     }
 
     return cumulative;
@@ -490,6 +449,10 @@ status_t MODS_GenerateMods(Index *index)
         // quick sort
         std::qsort((void *)(modEntries + stt), ssz, sizeof(pepEntry), cmpvarEntries);
     }
+
+    // remove varCount array
+    delete varCount;
+    varCount = nullptr;
 
     /* Return the status */
     return status;

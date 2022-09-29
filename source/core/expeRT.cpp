@@ -122,13 +122,6 @@ status_t expeRT::ModelSurvivalFunction(Results *rPtr)
     yy = rPtr->survival;
     hyp = rPtr->maxhypscore;
 
-    /*if (yy == NULL)
-    {
-        status = ERR_INVLD_PARAM;
-        mu_t = 0;
-        beta_t = 100;
-    }*/
-
     if (status == SLM_SUCCESS)
     {
         /* Find the curve region */
@@ -240,102 +233,11 @@ status_t expeRT::ModelSurvivalFunction(Results *rPtr)
 
             /* Modeled response * vaa (included) */
             logWeibullResponse(mu_t, beta_t, 0, hyp);
-
-            /* Disabled this code since we don't need to tail fit again */
-#if 0
-            /* Filter p_x again */
-            ends = rargmax((*p_x), 0, hyp - 1, 0.99);
-            stt = argmax((*p_x), 0, ends, 0.99);
-
-            p_x->clip(stt, ends);
-
-            /* Compute survival function s(x) */
-            sx->Assign(p_x->begin(), p_x->end());
-
-            /* cumulative_sum(sx) */
-            std::partial_sum(p_x->begin(), p_x->end(), sx->begin());
-
-            /* Survival function s(x) */
-            sx->divide((double_t)vaa);
-            sx->add((double_t)-1);
-            sx->negative();
-
-            /* Adjust for > 1 */
-            std::replace_if(sx->begin(), sx->end(), isLargerThan1<double_t>, 0.999);
-
-            /* Adjust for negatives */
-            int_t replacement = rargmax(*sx, 0, sx->Size()-1, 1e-4);
-            std::replace_if(sx->begin(), sx->end(), isZeroNegative<double_t>, (*sx)[replacement]);
-
-            /* log10(s(x)) */
-            std::transform(sx->begin(), sx->end(), sx->begin(), [](double_t& c) {   return log10(c);});
-
-            /* Offset markers */
-            auto mark = 0;
-            auto mark2 = 0;
-            auto hgt = (*sx)[sx->Size() - 1] - (*sx)[0];
-
-            /* If length > 4, then find thresholds */
-            if (sx->Size() > 3)
-            {
-                mark = largmax<lwvector<double_t>>(*sx, 0, sx->Size()-1, (*sx)[0] + hgt * 0.22) - 1;
-                mark2 = rargmax<lwvector<double_t>>(*sx, 0, sx->Size()-1, (*sx)[0] + hgt*0.87);
-
-                if (mark2 == (int_t)sx->Size())
-                {
-                    mark2 -= 1;
-                }
-
-                /* To handle special cases */
-                if (mark >= mark2)
-                {
-                    mark = mark2 - 1;
-                }
-            }
-            /* If length < 4 business as usual */
-            else if (sx->Size() == 3)
-            {
-                /* Mark the start of the regression point */
-                mark = largmax(*sx, 0, sx->Size()-1, (*sx)[0] + hgt * 0.22) - 1;
-                mark2 = sx->Size() - 1;
-
-                /* To handle special cases */
-                if (mark >= mark2)
-                {
-                    mark = mark2 - 1;
-                }
-            }
-            else
-            {
-                mark = 0;
-                mark2 = sx->Size() - 1;
-            }
-
-            /* Make the x-axis */
-            X->AddRange(stt+mark, stt+mark2);
-
-            /* Make the y-axis */
-            sx->clip(mark, mark2);
-
-            LinearFit<lwvector<double_t>>(*X, *sx, sx->Size(), mu_t, beta_t);
-
-            sx->Erase();
-            X->Erase();
-
-            //std::cout << "y = " << mu_t << "x + " << beta_t << std::endl;
-            //std::cout << "eValue: " << pow(10, hyp * mu_t + beta_t) * vaa << std::endl;
-#endif /* 0 */
         }
     }
 
-    /* Disabled this code since we don't need to tail fit again */
-#if 0
-    rPtr->mu = mu_t * 1e6;
-    rPtr->beta = beta_t *1e6;
-#else
     /* Assign variables back to rPtr */
     rPtr->mu = (*p_x)[hyp] * 1e6;
-#endif
 
     rPtr->minhypscore = stt1;
     rPtr->nexthypscore = end1;
@@ -458,102 +360,10 @@ status_t expeRT::ModelSurvivalFunction(double_t &eValue, const int_t max1)
 
         /* Modeled response * vaa (included) */
         logWeibullResponse(mu_t, beta_t, 0, hyp);
-
-        /* Disabled this code since we don't need to tail fit again */
-#if 0
-        /* Filter p_x again */
-        ends = rargmax((*p_x), 0, hyp - 1, 0.99);
-        stt = argmax((*p_x), 0, ends, 0.99);
-
-        p_x->clip(stt, ends);
-
-        /* Compute survival function s(x) */
-        sx->Assign(p_x->begin(), p_x->end());
-
-        /* cumulative_sum(sx) */
-        std::partial_sum(p_x->begin(), p_x->end(), sx->begin());
-
-        /* Survival function s(x) */
-        sx->divide((double_t) vaa);
-        sx->add((double_t) -1);
-        sx->negative();
-
-        /* Adjust for > 1 */
-        std::replace_if(sx->begin(), sx->end(), isLargerThan1<double_t>, 0.999);
-
-        /* Adjust for negatives */
-        int_t replacement = rargmax(*sx, 0, sx->Size() - 1, 1e-4);
-        std::replace_if(sx->begin(), sx->end(), isZeroNegative<double_t>, (*sx)[replacement]);
-
-        /* log10(s(x)) */
-        std::transform(sx->begin(), sx->end(), sx->begin(), [](double_t& c)
-        {   return log10(c);});
-
-        /* Offset markers */
-        auto mark = 0;
-        auto mark2 = 0;
-        auto hgt = (*sx)[sx->Size() - 1] - (*sx)[0];
-
-        /* If length > 4, then find thresholds */
-        if (sx->Size() > 3)
-        {
-            mark = largmax<lwvector<double_t>>(*sx, 0, sx->Size() - 1, (*sx)[0] + hgt * 0.22) - 1;
-            mark2 = rargmax<lwvector<double_t>>(*sx, 0, sx->Size() - 1, (*sx)[0] + hgt * 0.87);
-
-            if (mark2 == (int_t) sx->Size())
-            {
-                mark2 -= 1;
-            }
-
-            /* To handle special cases */
-            if (mark >= mark2)
-            {
-                mark = mark2 - 1;
-            }
-        }
-        /* If length < 4 business as usual */
-        else if (sx->Size() == 3)
-        {
-            /* Mark the start of the regression point */
-            mark = largmax(*sx, 0, sx->Size() - 1, (*sx)[0] + hgt * 0.22) - 1;
-            mark2 = sx->Size() - 1;
-
-            /* To handle special cases */
-            if (mark >= mark2)
-            {
-                mark = mark2 - 1;
-            }
-        }
-        else
-        {
-            mark = 0;
-            mark2 = sx->Size() - 1;
-        }
-
-        /* Make the x-axis */
-        X->AddRange(stt + mark, stt + mark2);
-
-        /* Make the y-axis */
-        sx->clip(mark, mark2);
-
-        LinearFit<lwvector<double_t>>(*X, *sx, sx->Size(), mu_t, beta_t);
-
-        sx->Erase();
-        X->Erase();
-
-        //std::cout << "y = " << mu_t << "x + " << beta_t << std::endl;
-        //std::cout << "eValue: " << pow(10, hyp * mu_t + beta_t) * vaa << std::endl;
-#endif /* 0 */
     }
 
-    /* Disabled this code since we don't need to tail fit again */
-#if 0
-    /* Compute the eValue */
-    eValue = pow(10, hyp * mu_t + beta_t) * vaa;
-#else
     /* Compute the eValue */
     eValue = (*p_x)[hyp];
-#endif /* 0 */
 
     /* Clear arrays, vectors and variables */
     pdata->setmem(0);
@@ -600,6 +410,10 @@ status_t expeRT::ModelTailFit(Results *rPtr)
         /* Slice off yyt between stt1 and end1 */
         p_x->Assign(yy + stt1, yy + end1 + 1);
 
+        // FIXME: remove me
+        //print2Vars(stt1, end1);
+        //printVar(hyp);
+
         /* Database size
          * vaa = accumulate(yy, yy + hyp + 1, 0); */
         vaa = rPtr->cpsms;
@@ -642,6 +456,9 @@ status_t expeRT::ModelTailFit(Results *rPtr)
             /* log10(s(x)) */
             std::transform(sx->begin(), sx->end(), sx->begin(), [](double_t& c) {   return log10(c);});
 
+            // FIXME:: Remove me
+            //sx->print();
+
             /* Offset markers */
             auto mark = 0;
             auto mark2 = 0;
@@ -683,11 +500,21 @@ status_t expeRT::ModelTailFit(Results *rPtr)
                 mark2 = sx->Size() - 1;
             }
 
+            //print2Vars((*sx)[0] + hgt * 0.22, (*sx)[0] + hgt*0.87);
+            //print2Vars(mark, mark2);
+
+            // FIXME:: Remove me
+            //sx->print();
+
+
             /* Make the x-axis */
             X->AddRange(stt+mark, stt+mark2);
 
             /* Make the y-axis */
             sx->clip(mark, mark2);
+
+            // FIXME:: Remove me
+            //sx->print();
 
             LinearFit<lwvector<double_t>>(*X, *sx, sx->Size(), mu_t, beta_t);
 
@@ -864,11 +691,52 @@ VOID expeRT::ResetPartialVectors()
 
 }
 
+std::array<short, 2> expeRT::StoreIResults(double *yy, int_t spec, int cpsms, ebuffer *ofs)
+{
+    status_t status = 0;
+
+    std::array<short, 2> minnext = {0, 0};
+
+    int_t curptr = spec * Xsamples * sizeof(ushort_t);
+
+    if (yy == NULL)
+    {
+        status = ERR_INVLD_PARAM;
+    }
+
+    if (status == SLM_SUCCESS)
+    {
+        /* Find the curve region */
+        auto ends = rargmax<double_t *>(yy, 0, SIZE - 1, 0.99);
+        auto stt = argmax<double_t *>(yy, 0, ends, 0.99);
+
+        for (auto ii = stt; ii <= ends; ii++)
+        {
+            ushort_t k = (yy[ii]);
+
+            /* Encode into 65500 levels */
+            if (cpsms > 65500)
+                k = (ushort_t)(((double_t)(k * 65500))/cpsms);
+
+            memcpy(ofs->ibuff + curptr, (const VOID *) &k, sizeof(k));
+            curptr += sizeof(k);
+        }
+
+        minnext[0] = stt;
+        minnext[1] = ends;
+
+        //rPtr->beta = rPtr->mu + Xsamples * sizeof(ushort_t);
+    }
+
+    return minnext;
+}
+
+
 status_t expeRT::StoreIResults(Results *rPtr, int_t spec, ebuffer *ofs)
 {
     status_t status = 0;
 
-    int_t curptr = spec * psize * sizeof(ushort_t);
+    int_t curptr = spec * Xsamples * sizeof(ushort_t);
     yy = rPtr->survival;
 
     if (yy == NULL)
@@ -896,7 +764,7 @@ status_t expeRT::StoreIResults(Results *rPtr, int_t spec, ebuffer *ofs)
 
         rPtr->minhypscore = stt;
         rPtr->nexthypscore = ends;
-        //rPtr->beta = rPtr->mu + psize * sizeof(ushort_t);
+        //rPtr->beta = rPtr->mu + Xsamples * sizeof(ushort_t);
     }
 
     yy = NULL;
@@ -915,7 +783,7 @@ status_t expeRT::Reconstruct(ebuffer *ebs, int_t specno, partRes *fR)
 
     pN += fR->N;
 
-    char_t *buffer = ebs->ibuff + (specno * (psize * 2));
+    char_t *buffer = ebs->ibuff + (specno * (Xsamples * 2));
 
     for (auto jj = min; jj <= max2; jj++)
     {

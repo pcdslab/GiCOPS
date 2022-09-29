@@ -43,7 +43,7 @@ if __name__ == '__main__':
                         help='The MS2 file to extract spectra from')
 
     parser.add_argument('-d', '--id', metavar='N', dest='specs', required=True, 
-                        type=int, nargs='+', help='Spectra numbers in the file')
+                        type=int, nargs='+', help='Spectra numbers in the file (index starting from 0)')
 
     args = parser.parse_args()
 

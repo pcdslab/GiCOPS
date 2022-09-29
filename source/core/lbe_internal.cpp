@@ -18,18 +18,18 @@
  */
 
 #include "lbe.h"
+#include "cuda/superstep1/kernel.hpp"
 using namespace std;
 
 vector<string_t> Seqs;
+vector<float_t> MZs;
 uint_t cumusize = 0;
-uint_t *varCount = NULL;
 ifstream file;
 
 extern gParams params;
 
 /* Static function Prototypes */
 static status_t LBE_AllocateMem(Index *index);
-static inline BOOL CmpPepEntries(pepEntry e1, pepEntry e2);
 /*
  * FUNCTION: LBE_AllocateMem
  *
@@ -76,7 +76,7 @@ BOOL LBE_ApplyPolicy(Index *index,  BOOL pepmod, uint_t key)
 {
     BOOL value = false;
 
-    DistPolicy policy = params.policy;
+    DistPolicy_t policy = params.policy;
 
     uint_t csize = index->lclmodCnt;
 
@@ -85,13 +85,13 @@ BOOL LBE_ApplyPolicy(Index *index,  BOOL pepmod, uint_t key)
         csize = index->lclpepCnt;
     }
 
-    if (policy == _chunk)
-    {
-        value = (key / csize) == (params.myid);
-    }
-    else if (policy == _cyclic)
+    if (policy == cyclic)
     {
         value = key % (params.nodes) == params.myid;
+    }
+    else if (policy == chunk)
+    {
+        value = (key / csize) == (params.myid);
     }
     else
     {
@@ -129,13 +129,9 @@ status_t LBE_Initialize(Index *index)
 
     /* Check if ">" entries are > 0 */
     if (index->lclpepCnt > 0)
-    {
         status = LBE_AllocateMem(index);
-    }
     else
-    {
         status = ERR_INVLD_PARAM;
-    }
 
     /* If Seqs was successfully filled */
     if (Seqs.size() != 0 && status == SLM_SUCCESS)
@@ -165,38 +161,71 @@ status_t LBE_Initialize(Index *index)
         status = ERR_FILE_NOT_FOUND;
     }
 
-    /* Fill in the peps entry */
+    // populate peptide entries
+    if (status == SLM_SUCCESS)
+        status = LBE_GeneratePeps(index);
+
+    // populate mod entries
+    if (index->lclmodCnt > 0)
+        status = MODS_GenerateMods(index);
+
+    // clear Seqs
+    Seqs.clear();
+    // clear MZs
+    MZs.clear();
+
+    //Sort the peptide index based on peptide precursor mass
     if (status == SLM_SUCCESS)
     {
-        status = LBE_GeneratePeps(index);
+#if defined(USE_GPU)
+
+        if (params.useGPU)
+            // sort pepEntries on the GPU
+            hcp::gpu::cuda::s1::SortPeptideIndex(index);
+        else
+#endif // defined(USE_GPU)
+        {
+            // directly sort the pepEntries on the CPU
+            std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, [](pepEntry &e1, pepEntry &e2) { return e1 < e2; });
+        }
     }
 
-    if (index->lclmodCnt > 0)
+    // 
+    // MAYBE: Soft remove invalid peptides
+    // Will need to call LBE_Distribute and/or LBE_CreatePartitions again
+    //
+    auto removeInvalidPeps = [&]()
     {
-        /* Fill in the mods entry */
-        status = MODS_GenerateMods(index);
-    }
+        // local variables
+        int total = index->lcltotCnt;
+        int nmods = index->lclmodCnt;
+        uint_t maxmass = params.max_mass;
 
-    /* Make sure Seqs is clear anyway */
-    Seqs.clear();
+        // check for any invalid mass peptides from the end.
+        for (int i = index->lclmodCnt-1; i > index->lclpepCnt; i--)
+        {
+            // since the pepEntries are sorted in ascending order
+            if (index->pepEntries[i].Mass > maxmass)
+            {
+                index->lcltotCnt--;
+                index->lclmodCnt--;
+                index->lastchunksize--;
 
-    /* Sort the peptide index based on peptide precursor mass */
-    if (status == SLM_SUCCESS && params.dM > 0.0)
-    {
-        std::sort(index->pepEntries, index->pepEntries + index->lcltotCnt, CmpPepEntries);
-    }
+                // if only one chunk
+                if (index->nChunks == 1)
+                    index->chunksize--;
+            }
+            // if small then break
+            else
+                break;
+        }
+    };
 
-    /* Deinitialize varCount */
-    if (varCount != NULL)
-    {
-        delete[] varCount;
-        varCount = NULL;
-    }
+    // MAYBE: soft remvoe the invalid mods if present
+    // removeInvalidPeps();
 
     if (status != SLM_SUCCESS)
-    {
-        (VOID) LBE_Deinitialize(index);
-    }
+        LBE_Deinitialize(index);
 
     return status;
 }
@@ -219,7 +248,7 @@ status_t LBE_GeneratePeps(Index *index)
     {
         uint_t idd = DSLIM_GenerateIndex(index, fill);
 
-        entries[fill].Mass = UTILS_CalculatePepMass((AA *)Seqs.at(idd).c_str(), seqlen);
+        entries[fill].Mass = MZs[idd];
         entries[fill].seqID = idd;
         entries[fill].sites.sites = 0x0;
         entries[fill].sites.modNum = 0x0;
@@ -366,11 +395,10 @@ status_t LBE_CreatePartitions(Index *index)
  * OUTPUT:
  * @status: Status of execution
  */
-status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
+status_t LBE_CountPeps(string &filename, Index *index, uint_t explen)
 {
     status_t status = SLM_SUCCESS;
     string_t line;
-    float_t pepmass = 0.0;
     string_t modconditions = params.modconditions;
     uint_t maxmass= params.max_mass;
     uint_t minmass= params.min_mass;
@@ -379,6 +407,9 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
     index->pepIndex.AAs = 0;
     index->pepCount = 0;
     index->modCount = 0;
+
+    // print current progress
+    printProgress(Database Indexing);
 
     /* Open file */
     file.open(filename);
@@ -389,65 +420,59 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
         {
             if (line.at(0) != '>')
             {
-                /* Linux needs \n not \r\n at end of each line */
+                // remove any \r symbols at the eol
                 if (line.at(line.length() - 1) == '\r')
                 {
                     line = line.substr(0, line.size() - 1);
                 }
 
-                /* Transform to all upper case letters */
+                // transform to all upper case letters
                 std::transform(line.begin(), line.end(), line.begin(), ::toupper);
 
-                /* Check the integrity of the peptide
-                 * sequence being read */
+                // check length
                 if (line.length() != explen)
                 {
                     status = ERR_INVLD_SIZE;
-                    break;
+                    std::cerr << "Invalid peplen: " << line.length() << ", expected: " << explen << std::endl;
                 }
 
-                /* Calculate mass of peptide */
-                pepmass = UTILS_CalculatePepMass((AA *)line.c_str(), line.length());
+                // validate precursor mass
+                float_t pepmass = UTILS_CalculatePepMass((AA *)line.c_str(), line.length());
 
-                /* Check if the peptide mass is legal */
+                // add to Seqs and MZ vectors
                 if (pepmass >= minmass && pepmass <= maxmass)
                 {
-                    index->pepCount++;
-                    index->pepIndex.AAs += line.length();
-                    Seqs.push_back(line);
+                    Seqs.emplace_back(std::move(line));
+                    MZs.emplace_back(std::move(pepmass));
                 }
             }
         }
+
+        /* Close the file once done */
+        file.close();
+
+        // set the index properties
+        index->pepCount = Seqs.size();
+        index->pepIndex.AAs = Seqs[0].length() * Seqs.size();
     }
     else
     {
-        std::cout << std::endl << "FATAL: Could not read FASTA file" << std::endl;
+        std::cerr << std::endl << "FATAL: Could not read the file: " << filename << std::endl;
         status = ERR_INVLD_PARAM;
     }
 
-    /* Allocate the varCount array */
+    // Count the # of varmods given modification info
     if (status == SLM_SUCCESS)
-    {
-        varCount = new uint_t[index->pepCount + 1];
-    }
-
-    /* Count the number of variable mods given
-     * modification information */
-    if (status == SLM_SUCCESS)
-    {
         index->modCount = MODS_ModCounter();
-    }
 
-    /* Check if any errors occurred in MODS_ModCounter */
+    // check for errors in MODS_ModCounter
     if (index->modCount == (uint_t)(-1) || index->pepIndex.AAs != index->pepCount * explen)
-    {
         status = ERR_INVLD_SIZE;
-    }
 
-    /* Print if everything is okay */
+    // Print if everything is okay 
     if (status == SLM_SUCCESS)
     {
-        /* Return the total count */
+        // Return the total count
         index->totalCount = index->pepCount + index->modCount;
         cumusize += index->totalCount;
 
@@ -458,34 +483,7 @@ status_t LBE_CountPeps(char_t *filename, Index *index, uint_t explen)
             std::cout << "Total Index Size      =\t\t" << index->totalCount << std::endl;
             std::cout << "Cumulative Index Size =\t\t" << cumusize << std::endl << std::endl;
         }
-
-        /* Close the file once done */
-        file.close();
     }
 
     return status;
 }
-
-/*
- * FUNCTION: LBE_PrintHeader
- *
- * DESCRIPTION: Prints the LBE header
- *
- * INPUT : none
- * OUTPUT: none
- */
-VOID LBE_PrintHeader()
-{
-    std::cout << "\n"
-            "***************************************\n"
-            "* HiCOPS: HPC Database Peptide Search *\n"
-            "* School of Computing & Info Sciences *\n"
-            "*   Florida International University  *\n"
-            "*         Miami, Florida, USA         *\n"
-            "***************************************\n"
-          << std::endl << std::endl;
-
-    return;
-}
-
-static inline BOOL CmpPepEntries(pepEntry e1, pepEntry e2) { return e1 < e2; }

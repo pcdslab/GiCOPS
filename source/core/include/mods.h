@@ -27,8 +27,6 @@
 #include "common.hpp"
 #include "utils.h"
 
-#define MAX_COMBS                          64
-
 /*
  * FUNCTION: MODS_ModCounter
  *

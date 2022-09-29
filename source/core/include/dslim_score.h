@@ -96,6 +96,10 @@ public:
 
     status_t   CombineResults();
 
+#ifdef USE_GPU
+    status_t   GPUCombineResults();
+#endif
+
     status_t   ScatterScores();
 
     status_t   TXSizes(MPI_Request *, int_t *);

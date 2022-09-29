@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019  Muhammad Haseeb, and Fahad Saeed
+ * Copyright (C) 2021  Muhammad Haseeb, and Fahad Saeed
  * Florida International University, Miami, FL
  *
  * This program is free software: you can redistribute it and/or modify
@@ -21,13 +21,18 @@
 
 #pragma once
 
-#include <string>
 #include <iostream>
 #include <cstdlib>
 #include <cmath>
 #include <cstdio>
+#include <string>
 #include <fstream>
 #include <string>
+#include <vector>
+#include <memory>
+#include <map>
+#include <set>
+#include <algorithm>
 #include <cstdlib>
 #include <iomanip>
 #include <pthread.h>
@@ -40,53 +45,35 @@
 
 #ifdef USE_OMP
 #include <omp.h>
-#endif
+#endif // USE_OMP
 
 #ifdef USE_MPI
 #include <mpi.h>
-#endif /* USE_MPI */
+#endif // USE_MPI
 
-/* Set/Get the bit for modification site in a peptide */
-#define MODSITE(x)                       (1 << (x))
+// include the data type aliases
+#include "aliases.hpp"
 
-/* Handle unusued parameters to avoid compiler warnings */
-#define LBE_UNUSED_PARAM(x)              ((void *)(&x))
+// ------------------------------------------------------------------------------------ //
 
-#define MIN(x,y)                         ((x < y)? x: y)
-#define MAX(x,y)                         ((x > y)? x: y)
-#define True                             true
-#define False                            false
+#define printVar(x)                     std::cout << #x << " = " << x << std::endl
+#define print2Vars(x, y)                std::cout << #x << " = " << x << ", " << #y << " = " << y << std::endl
 
-/* alias the data types */
-using status_t = int;
-using int_t = int;
-using longlong_t = long long;
-using short_t = short;
-using long_t = long;
-using char_t = char;
-using VOID = void;
-using BOOL = bool;
-using bool_t = bool;
-using double_t = double;
-using string_t = std::string;
+#define printProgress(x)                if (params.myid == 0)                               \
+                                            std::cout << std::endl << "---- " << #x << " ----" << std::endl << std::endl
 
-/* Unsigned data types */
-using uint_t = unsigned int;
-using IDX  = unsigned int;
-using ID =  unsigned int;
-using ulong_t  = unsigned long;
-using ull_t = unsigned long long;
-using ushort_t = unsigned short;
-using uchar_t = unsigned char;
-using float_t  = float;
+#define printHeader(x, y)                                                   \
+{                                                                           \
+    std::cout << "\n"                                                       \
+            "|-------------------------------------|\n"                     \
+            "| " << #x << ": " << #y << " Database Peptide Search |\n"      \
+            "|          PCDSLab, KFSCIS            |\n"                     \
+            "|   Florida International University  |\n"                     \
+            "|         Miami, Florida, USA         |\n"                     \
+            "|-------------------------------------|\n"                     \
+        << std::endl << std::endl;                                          \
+}
 
-using CHG = unsigned int;
-using SLM_SC = unsigned short*;
-
-using AA = char;            // Amino Acid character
-using PEAK = double;        // m/z of a fragement (peak)
-using intensity_t = double; // Intensity of a fragment (peak)
-using SPECTRUM = double*;   // Theoretical Spectrum
-
-using  thread_t = pthread_t;
-using  lock_t = sem_t;
+#define KBYTES(x)                       ((x) * 1024)
+#define MBYTES(x)                       ((x) * 1024 * 1024)
+#define GBYTES(x)                       ((x) * 1024 * 1024 * 1024)

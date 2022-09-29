@@ -44,6 +44,7 @@ endif()
 #       CMake settings
 ##########################################################################################
 option(USE_MPI "Enable MPI in hicops" ON)
+option(USE_GPU "Enable GPU (CUDA) support in hicops" OFF)
 option(USE_TIMEMORY "Enable Timemory instrumentation" OFF)
 option(USE_MPIP_LIBRARY "Enable MPIP instrumentation via Timemory" OFF)
 
@@ -60,13 +61,14 @@ endif()
 #       CXX standard
 ##########################################################################################
 set(CXX_STANDARD_REQUIRED ON)
-set(HiCOPS_CXX_STANDARD 17)
 
-if(CMAKE_CXX_STANDARD LESS ${HiCOPS_CXX_STANDARD})
-    set(CMAKE_CXX_STANDARD ${HiCOPS_CXX_STANDARD})
-    message(STATUS "Setting CXX_STANDARD to ${HiCOPS_CXX_STANDARD}")
+# required minimum CXX standard
+set(CMAKE_CXX_STANDARD_REQUIRED 17)
+
+if(NOT CXX_STANDARD OR (CXX_STANDARD LESS ${CMAKE_CXX_STANDARD_REQUIRED}))
+    set(CXX_STANDARD ${CMAKE_CXX_STANDARD_REQUIRED})
+    message(STATUS "Setting CXX_STANDARD to ${CMAKE_CXX_STANDARD_REQUIRED}")
 endif()
-
 
 ##########################################################################################
 #       MPI and OpenMP
@@ -77,7 +79,9 @@ if(OpenMP_FOUND)
     list(APPEND _OMP OpenMP::OpenMP_CXX)
     set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS} -DUSE_OMP")
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} -DUSE_OMP")
+    set (CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} ${OpenMP_CUDA_FLAGS} -DUSE_OMP")
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS} -DUSE_OMP")
+
 endif()
 
 if (USE_MPI)
@@ -89,6 +93,21 @@ if(MPI_FOUND AND USE_MPI)
     include_directories(SYSTEM ${MPI_INCLUDE_PATH})
     target_compile_definitions(MPI::MPI_CXX INTERFACE)
     set (TMP mpi ${TMP})
+endif()
+
+##########################################################################################
+#       GPU and CUDA
+##########################################################################################
+
+if (USE_GPU)
+    include(CheckLanguage)
+    check_language(CUDA)
+    enable_language(CUDA)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    list(APPEND _CUDA CUDA::CUDA_CXX)
+    include_directories(SYSTEM ${CUDA_INCLUDE_PATH})
+    set (TMP cuda ${TMP})
 endif()
 
 ##########################################################################################
@@ -176,14 +195,20 @@ if (NOT MAX_SHDPEAKS)
     set(MAX_SHDPEAKS   80)
 endif()
 
-# configure the file
+# configure the file: config.hpp
 configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/config.hpp.in config.hpp @ONLY)
 
-# configure the file
+# configure the file: aliases.hpp
+configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/aliases.hpp.in aliases.hpp @ONLY)
+
+# configure the file: common.hpp
 configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/common.hpp.in common.hpp @ONLY)
 
+# configure the file: aamasses.hpp
+configure_file(${PROJECT_SOURCE_DIR}/cmake/Templates/aamasses.hpp.in aamasses.hpp @ONLY)
+
 # install the configured file as well
-install(FILES ${CMAKE_BINARY_DIR}/config.hpp ${CMAKE_BINARY_DIR}/common.hpp DESTINATION include)
+install(FILES ${CMAKE_BINARY_DIR}/config.hpp ${CMAKE_BINARY_DIR}/aliases.hpp ${CMAKE_BINARY_DIR}/common.hpp ${CMAKE_BINARY_DIR}/aamasses.hpp DESTINATION include)
 
 ##########################################################################################
 #       Add sub-directories

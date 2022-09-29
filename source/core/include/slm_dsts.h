@@ -32,21 +32,21 @@
 /* Add distribution policies */
 typedef enum _DistPolicy
 {
-    _chunk,
-    _cyclic,
-    _zigzag,
+    cyclic,
+    chunk,
+    zigzag,
 
-} DistPolicy;
+} DistPolicy_t;
 
 typedef struct _SLM_varAA
 {
-    AA     residues[4]   ; /* Modified AA residues in this modification - Upto 4 */
+    AA     residues[5]   ; /* Modified AA residues in this modification - Upto 4 */
     uint_t  modMass        ; /* Scaled mass of the modification                    */
     ushort_t aa_per_peptide; /* Allowed modified residues per peptide sequence     */
 
     _SLM_varAA()
     {
-        residues[0]= '\0';
+        residues[0] = residues[1] = residues[2] = residues[3] = residues[4] = '\0';
         modMass = 0;
         aa_per_peptide = 0;
     }
@@ -287,37 +287,27 @@ typedef struct _pepEntry
  * their summed intensities for a given experimental spectrum
  * against all the candidate peptides.
  */
-typedef struct _BYC
+struct BYC
 {
     short_t      bc; // b ion count
     short_t      yc; // y ion count
     long_t      ibc; // b ion intensities
     long_t      iyc; // y ion intensities
+};
 
-    _BYC()
-    {
-        bc = 0;
-        yc = 0;
-        ibc = 0;
-        iyc = 0;
-    }
-} BYC;
-
-typedef struct _SLMchunk
+struct DSLIM_Matrix
 {
     uint_t    *iA; // Ions Array (iA)  
     uint_t    *bA; // Bucket Array (bA)
 
-    _SLMchunk()
+    DSLIM_Matrix()
     {
         iA = NULL;
         bA = NULL;
     }
+};
 
-#ifdef FUTURE
-    uchar_t *bits = NULL; // Scorecard bits
-#endif /* FUTURE */
-} SLMchunk;
+using spmat_t = DSLIM_Matrix;
 
 /* Structure for each pep file */
 typedef struct _Index
@@ -335,7 +325,7 @@ typedef struct _Index
 
     PepSeqs     pepIndex;
     pepEntry *pepEntries;
-    SLMchunk   *ionIndex;
+    spmat_t    *ionIndex;
 
     _Index()
     {
@@ -356,10 +346,18 @@ typedef struct _Index
 } Index;
 
 /* Structure for global Parameters */
-typedef struct _globalParams
+class gParams
 {
+public:
+
+enum FileType_t {
+    MS2,
+    PBIN
+};
+
     uint_t threads;
     uint_t maxprepthds;
+    uint_t gputhreads;
     uint_t min_len;
     uint_t max_len;
     uint_t maxz;
@@ -378,6 +376,11 @@ typedef struct _globalParams
     int_t  base_int;
     int_t  min_int;
 
+    bool_t useGPU;
+    bool_t reindex;
+    bool_t nocache;
+    bool_t gpuindex;
+
     double_t dM;
     double_t res;
     double_t expect_max;
@@ -385,16 +388,21 @@ typedef struct _globalParams
     string_t dbpath;
     string_t datapath;
     string_t workspace;
+    const string_t dataext = ".ms2";
+
     string_t modconditions;
 
-    DistPolicy policy;
+    DistPolicy_t policy;
+
+    FileType_t filetype;
 
     SLM_vMods vModInfo;
 
-    _globalParams()
+    gParams()
     {
         threads = 1;
         maxprepthds = 1;
+        gputhreads = 1;
         min_len = 6;
         max_len = 40;
         maxz = 3;
@@ -403,8 +411,12 @@ typedef struct _globalParams
         expect_max = 20;
         min_shp = 4;
         min_cpsm = 4;
-        base_int = 100000;
+        base_int = 1000000;
         min_int = 0.01 * base_int;
+        useGPU = false;
+        reindex = true;
+        nocache = false;
+        gpuindex = true;
         nodes = 1;
         myid = 0;
         spadmem = 2048;
@@ -413,16 +425,100 @@ typedef struct _globalParams
         dF = 0;
         dM = 500.0;
         res = 0.01;
-        policy = DistPolicy::_cyclic;
-	}
-}gParams;
+        policy = DistPolicy_t::cyclic;
+        filetype = FileType_t::PBIN;
+    }
+
+    ~gParams() = default;
+
+    void toggleGPU(bool_t _useGPU)
+    {
+#if defined(USE_GPU)
+        this->useGPU = _useGPU;
+
+        if (!this->useGPU)
+            this->gputhreads = 0;
+#else
+        if (_useGPU)
+            std::cout << "ERROR: Build with USE_GPU=ON to enable GPU." << std::endl;
+
+        this->useGPU = false;
+        this->gputhreads = 0;
+#endif // USE_GPU
+    }
+
+    void setindexAndCache(bool _reindex, bool _nocache)
+    {
+        this->nocache = _nocache;
+        this->reindex = _reindex;
+
+        // if nocache is true then also reindex
+        if (this->nocache)
+        {
+            this->filetype = FileType_t::MS2;
+            this->reindex = _reindex = true;
+        }
+        else
+        {
+            this->filetype = FileType_t::PBIN;
+        }
+    }
+    void print()
+    {
+        printVar(threads);
+        printVar(maxprepthds);
+        printVar(gputhreads);
+        printVar(min_len);
+        printVar(max_len);
+        printVar(maxz);
+        printVar(topmatches);
+        printVar(scale);
+        printVar(expect_max);
+        printVar(min_shp);
+        printVar(min_cpsm);
+        printVar(base_int);
+        printVar(useGPU);
+        printVar(reindex);
+        printVar(nocache);
+        printVar(gpuindex);
+        printVar(min_int);
+        printVar(nodes);
+        printVar(myid);
+        printVar(spadmem);
+        printVar(min_mass);
+        printVar(max_mass);
+        printVar(dF);
+        printVar(dM);
+        printVar(res);
+        printVar(policy);
+        printVar(dbpath);
+        printVar(datapath);
+        printVar(workspace);
+        printVar(dataext);
+        printVar(filetype);
+
+        printVar(modconditions);
+        printVar(vModInfo.num_vars);
+        printVar(vModInfo.vmods_per_pep);
+
+        for (int i = 0 ; i < vModInfo.num_vars; i++)
+        {
+            auto k = vModInfo.vmods[i];
+            printVar(k.residues);
+            printVar(k.modMass);
+            printVar(k.aa_per_peptide);
+        }
+    }
+
+};
 
 
 /* Experimental MS/MS spectra data */
-typedef struct _queries
+template <typename T>
+struct Queries
 {
-    uint_t        *moz; /* Stores the m/z values of the spectra */
-    uint_t  *intensity; /* Stores the intensity values of the experimental spectra */
+    T        *moz; /* Stores the m/z values of the spectra */
+    T  *intensity; /* Stores the intensity values of the experimental spectra */
     uint_t        *idx; /* Row ptr. Starting index of each row */
     float_t  *precurse; /* Stores the precursor mass of each spectrum. */
     int_t     *charges;
@@ -440,7 +536,7 @@ typedef struct _queries
         batchNum = 0;
     }
 
-    _queries()
+    Queries()
     {
         fileNum  = 0;
         this->idx       = NULL;
@@ -453,14 +549,14 @@ typedef struct _queries
         batchNum        = 0;
     }
 
-    VOID init()
+    VOID init(int chunksize = QCHUNK)
     {
-        this->idx       = new uint_t[QCHUNK + 1];
-        this->precurse  = new float_t[QCHUNK];
-        this->charges   = new int_t[QCHUNK];
-        this->rtimes   = new float_t[QCHUNK];
-        this->moz       = new uint_t[QCHUNK * QALEN];
-        this->intensity = new uint_t[QCHUNK * QALEN];
+        this->idx       = new uint_t[chunksize + 1];
+        this->precurse  = new float_t[chunksize];
+        this->charges   = new int_t[chunksize];
+        this->rtimes   = new float_t[chunksize];
+        this->moz       = new T[chunksize * QALEN];
+        this->intensity = new T[chunksize * QALEN];
         fileNum         = 0;
         numPeaks        = 0;
         numSpecs        = 0;
@@ -512,7 +608,7 @@ typedef struct _queries
         }
     }
 
-    ~_queries()
+    ~Queries()
     {
         numPeaks = 0;
         numSpecs = 0;
@@ -556,7 +652,7 @@ typedef struct _queries
         }
     }
 
-} Queries;
+};
 
 /* Score entry that goes into the heap */
 typedef struct _heapEntry
@@ -666,7 +762,7 @@ typedef struct _commRqst
 {
     uint_t btag;
     uint_t bsize;
-    uint_t buff;
+    int_t buff;
 
     VOID _comRqst()
     {
@@ -910,8 +1006,6 @@ typedef struct _fResult
 
 } fResult;
 
-#define psize          128
-
 typedef struct _ebuffer
 {
     char_t *ibuff;
@@ -923,7 +1017,7 @@ typedef struct _ebuffer
     _ebuffer()
     {
         packs = new partRes[QCHUNK];
-        ibuff = new char_t[(psize * sizeof (ushort_t)) * QCHUNK];
+        ibuff = new char_t[(Xsamples * sizeof (ushort_t)) * QCHUNK];
         currptr = 0;
         batchNum = -1;
         isDone = true;
@@ -949,3 +1043,21 @@ typedef struct _ebuffer
     }
 
 } ebuffer;
+
+struct dIndex
+{
+    int nChunks = 0;
+    spmat_t   *ionIndex;
+};
+
+#if defined (USE_GPU)
+
+struct dhCell
+{
+    float hyperscore;
+    int psid;
+    ushort_t idxoffset;
+    ushort_t sharedions;
+};
+
+#endif // USE_GPU

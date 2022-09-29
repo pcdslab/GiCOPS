@@ -19,6 +19,7 @@
 
 #include "dslim_score.h"
 #include "dslim_fileout.h"
+#include "cuda/superstep4/kernel.hpp"
 
 #ifdef USE_MPI
 
@@ -231,7 +232,7 @@ status_t DSLIM_Score::CombineResults()
             if (fhs[saa].is_open())
             {
                 fhs[saa].read((char_t *)iBuffs[saa].packs, bSize * sizeof(partRes));
-                fhs[saa].read(iBuffs[saa].ibuff, bSize * psize * sizeof(ushort_t));
+                fhs[saa].read(iBuffs[saa].ibuff, bSize * Xsamples * sizeof(ushort_t));
 
                 if (fhs[saa].fail())
                 {
@@ -384,6 +385,222 @@ status_t DSLIM_Score::CombineResults()
     /* return the status of execution */
     return status;
 }
+
+
+#if defined (USE_GPU)
+
+status_t DSLIM_Score::GPUCombineResults()
+{
+    status_t status = SLM_SUCCESS;
+
+    /* Each node sent its sample */
+    const int_t nSamples = params.nodes;
+    auto startSpec= 0;
+    ifstream *fhs = NULL;
+    ebuffer  *iBuffs = NULL;
+
+    if (this->myRXsize > 0)
+    {
+        fhs = new ifstream[nSamples];
+        iBuffs = new ebuffer[nSamples];
+    }
+
+    auto vbatch = params.myid;
+
+    for (auto batchNum = 0; batchNum < this->nBatches; batchNum++, vbatch += nSamples)
+    {
+#if defined (PROGRESS)
+        if (params.myid == 0)
+            std::cout << "\rDONE:\t\t" << (batchNum * 100) /this->nBatches << "%";
+#endif // PROGRESS
+
+        auto bSize = sizeArray[batchNum];
+
+        double_t *h_data;
+        int *h_cpsms;
+        float_t h_hyp;
+        double *h_evalues;
+        int *h_keys = new int[bSize];
+
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::host_pinned_allocate(h_data, expeRT::SIZE * bSize));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::host_pinned_allocate(h_cpsms, bSize));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::host_pinned_allocate(h_hyp, bSize));
+        hcp::gpu::cuda::error_check(hcp::gpu::cuda::host_pinned_allocate(h_evalues, bSize));
+
+        // read data from .dat files
+        for (int_t saa = 0; saa < nSamples; saa++)
+        {
+            fn = params.workspace + "/" + std::to_string(vbatch) + "_"
+                    + std::to_string(saa) + ".dat";
+
+            fhs[saa].open(fn, ios::in | ios::binary);
+
+            if (fhs[saa].is_open())
+            {
+                fhs[saa].read((char_t *)iBuffs[saa].packs, bSize * sizeof(partRes));
+                fhs[saa].read(iBuffs[saa].ibuff, bSize * Xsamples * sizeof(ushort_t));
+
+                if (fhs[saa].fail())
+                {
+                    status = ERR_FILE_NOT_FOUND;
+                    std::cout << "FATAL: File Read Failed" << std::endl;
+                    exit(status);
+                }
+            }
+
+            fn.clear();
+        }
+
+#ifdef USE_OMP
+#pragma omp parallel for schedule (dynamic, 4) num_threads(params.threads)
+#endif /* USE_OMP */
+        for (int_t spec = 0; spec < bSize; spec++)
+        {
+            int_t thno = omp_get_thread_num();
+
+            /* Results pointer to use */
+            expeRT *expPtr = this->ePtr + thno;
+
+            // reset the host vectors
+            h_cpsms[spec] = 0;
+            h_evalues[spec] = params.expect_max;
+
+            for (int ij = 0; ij < expeRT::SIZE; ij++)
+                h_data[spec * expeRT::SIZE + ij] = 0;
+
+            /* Record locators */
+            h_keys[spec] = params.nodes;
+            h_hyp[spec] = -1;
+
+            /* For all samples, update the histogram */
+            for (int_t sno = 0; sno < nSamples; sno++)
+            {
+                /* Pointer to Result sample */
+                partRes *sResult = iBuffs[sno].packs + spec;
+
+                if (*sResult == 0)
+                    continue;
+
+                /* Update the number of samples */
+                h_cpsms[spec] += sResult->N;
+
+                /* Only take out data if present */
+                if (sResult->N >= 1)
+                {
+                    /* Reconstruct the partial histogram */
+                    // expPtr->Reconstruct(&iBuffs[sno], spec, sResult);
+                    expPtr->Reconstruct(&iBuffs[sno], spec, sResult, &h_data[spec * expeRT::SIZE]);
+                
+                    /* Record the maxhypscore and its key */
+                    if (sResult->max > 0 && sResult->max > h_cpsms[spec])
+                    {
+                        h_hyp[spec] = sResult->max;
+                        h_keys[spec] = sno;
+                    }
+                }
+            }
+        }
+
+        // compute evalues
+        hcp::gpu::cuda::s4::processResults(h_data, h_hyp, h_cpsms, h_evalues, bsize);
+
+#ifdef USE_OMP
+#pragma omp parallel for schedule (dynamic, 4) num_threads(params.threads)
+#endif /* USE_OMP */
+        for (int_t spec = 0; spec < bSize; spec++)
+        {
+            /* Combine the fResult */
+            fResult *psm = &TxValues[startSpec + spec];
+
+            /* Need further processing only if enough results */
+            if (h_keys[spec] < (int_t) params.nodes && h_cpsms[spec] >= (int_t) params.min_cpsm)
+            {
+                double_t e_x = h_evalues[spec];
+
+                /* If the scores are good enough */
+                if (e_x < params.expect_max)
+                {
+                    partRes *ssResult = iBuffs[key].packs + spec;
+
+                    psm->eValue = e_x * 1e6;
+                    psm->specID = ssResult-> qID;
+                    psm->npsms = h_cpsms[spec];
+
+                    /* Must be an atomic update */
+#ifdef USE_OMP
+#pragma omp atomic update
+                    txSizes[key] += 1;
+#else
+                    txSizes[key] += 1;
+#endif /* USE_OMP */
+
+                    /* Update the key */
+                    keys[startSpec + spec] = key;
+                }
+                else
+                {
+                    psm->eValue = params.expect_max * 1e6;
+                    psm->specID = -1;
+                    psm->npsms = 0;
+                    keys[startSpec + spec] = params.nodes;
+                }
+            }
+            else
+            {
+                expPtr->ResetPartialVectors();
+                psm->eValue = params.expect_max * 1e6;
+                psm->specID = -1;
+                psm->npsms = 0;
+                keys[startSpec + spec] = params.nodes;
+            }
+        }
+
+        /* Update the counters */
+        startSpec += sizeArray[batchNum];
+
+        /* Remove the files when no longer needed */
+        for (int_t saa = 0; saa < nSamples; saa++)
+        {
+            fn = params.workspace + "/" + std::to_string(vbatch) + "_" + std::to_string(saa)
+                    + ".dat";
+
+            if (fhs[saa].is_open())
+            {
+                fhs[saa].close();
+                std::remove((const char_t *) fn.c_str());
+            }
+
+            fn.clear();
+        }
+    }
+
+    if (this->myRXsize > 0)
+    {
+        delete[] fhs;
+        fhs = NULL;
+
+        delete[] iBuffs;
+        iBuffs = NULL;
+    }
+
+    /* Check if we have RX data */
+    if (myRXsize > 0)
+    {
+        /* Sort the TxValues by keys (mchID) */
+        KeyVal_Parallel<int_t, fResult>(keys, TxValues, myRXsize, params.threads);
+    }
+    else
+    {
+        /* Set all sizes to zero */
+        for (uint_t ky = 0; ky < params.nodes - 1; ky++)
+            txSizes[ky] = 0;
+    }
+
+    /* return the status of execution */
+    return status;
+}
+
+#endif /* USE_GPU */
 
 status_t DSLIM_Score::ScatterScores()
 {

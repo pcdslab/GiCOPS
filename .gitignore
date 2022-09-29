@@ -9,7 +9,6 @@
 *.obj
 *params*
 *.fasta
-*mods*
 *.tsv
 
 # Docs
@@ -35,6 +34,8 @@ __pycache__
 
 # macOS Finder files
 .DS_Store
+
+*.dbprep
 
 # images
 /*.png
@@ -76,9 +77,13 @@ __pycache__
 # Executables
 *.exe
 *.out
+*.bin
 *.app
 *.map
 *.pyc
+
+# preprocessed data files
+*.pbin
 
 # Autogen
 workspace*/
@@ -94,6 +99,10 @@ __pycache__/
 
 # C extensions
 *.so
+
+# tmp files
+~*
+*.~*
 
 # Distribution / packaging
 .Python

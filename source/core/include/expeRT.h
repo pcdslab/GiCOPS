@@ -60,7 +60,7 @@ class expeRT
 private:
 
     /* Size of histogram */
-    const int_t SIZE = 2 + (MAX_HYPERSCORE * 10);
+    static const int_t SIZE = 2 + (MAX_HYPERSCORE * 10);
 
     /* Index number set 1 */
     int_t stt1;
@@ -101,13 +101,13 @@ private:
     VOID LinearFit(T& x, T& y, int_t n, double_t &a, double_t &b);
 
     template <class T>
-    inline int_t argmax(T &data, int_t i1, int_t i2, double_t value);
+    static inline int_t argmax(T &data, int_t i1, int_t i2, double_t value);
 
     template <class T>
-    inline int_t rargmax(T &data, int_t i1, int_t i2, double_t value);
+    static inline int_t rargmax(T &data, int_t i1, int_t i2, double_t value);
 
     template <class T>
-    inline int_t largmax(T &data, int_t i1, int_t i2, double_t value);
+    static inline int_t largmax(T &data, int_t i1, int_t i2, double_t value);
 
     dvector vrange(int_t, int_t);
     darray  arange(int_t, int_t);
@@ -127,6 +127,8 @@ public:
 
     /* Add distibution data */
     status_t AddlogWeibull(int_t, double_t, double_t, int_t, int_t);
+
+    static std::array<short, 2> StoreIResults(double *yy, int_t spec, int_t cpsms, ebuffer *ofs);
 
     status_t StoreIResults(Results *, int_t, ebuffer *);
 

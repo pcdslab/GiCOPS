@@ -22,16 +22,21 @@
 #include <string>
 #include "common.hpp"
 #include "utils.h"
+#include "hicops_mpi.hpp"
 
 /* Spectrum */
+template <typename T>
 struct _Spectrum
 {
-    uint_t *mz;
-    uint_t *intn;
+    T *mz;
+    T *intn;
     uint_t SpectrumSize;
-    double_t prec_mz;
-    uint_t Z;
-    double_t rtime;
+    float_t prec_mz;
+    ushort_t Z;
+    float_t rtime;
+
+    // default constructor
+    _Spectrum() = default;
 
     /* Overload the = operator - Required by MSQuery */
     _Spectrum &operator=(const _Spectrum &rhs)
@@ -45,7 +50,30 @@ struct _Spectrum
 
         return *this;
     }
-} ;
+
+    void allocate(uint_t size)
+    {
+        this->mz = new T[size];
+        this->intn = new T[size];
+    }
+
+    void deallocate()
+    {
+        if (this->mz)
+        {
+            delete[] this->mz;
+            this->mz = nullptr;
+        }
+        
+        if (this->intn)
+        {
+            delete[] this->intn;
+            this->intn = nullptr;
+        }
+
+
+    }
+};
 
 struct _info
 {
@@ -56,6 +84,9 @@ struct _info
     _info() = default;
     ~_info() = default;
 
+    _info(uint_t _maxslen, uint_t _nqchunks, uint_t _QAcount) : maxslen(_maxslen), nqchunks(_nqchunks), QAcount(_QAcount)
+    {}
+
     /* Overload the = operator */
     _info &operator=(const _info &rhs)
     {
@@ -65,14 +96,15 @@ struct _info
 
         return *this;
     }
+
 };
 
 using info_t = _info;
-using spectrum_t = _Spectrum;
+using spectrum_t = _Spectrum<spectype_t>;
 
 class MSQuery
 {
-private:
+protected:
     /* Global Variables */
     uint_t currPtr;
     uint_t running_count;
@@ -84,21 +116,36 @@ private:
     spectrum_t spectrum;
     bool_t m_isinit;
 
-    VOID readspectrum();
-    status_t pickpeaks(Queries *);
+    static std::array<int, 2> convertAndprepMS2bin(string_t *filename);
+    static std::array<int, 2> readMS2file(string_t *filename);
+
+    void readMS2spectrum();
+    
+    template <typename T>
+    void readBINbatch(int, int, Queries<T> *);
+
+    template <typename T>
+    status_t pickpeaks(Queries<T> *);
+    
+    template <typename T>
+    static status_t pickpeaks(std::vector<T> &, std::vector<T> &, int &, int, T *, T *);
 
 public:
 
     MSQuery();
-    virtual ~MSQuery();
+    ~MSQuery();
     uint_t getQAcount();
     status_t initialize(string_t *, int_t);
     void vinitialize(string_t *, int_t);
-    static status_t init_index();
+    static bool init_index(const std::vector<string_t> &);
     static status_t write_index();
     static status_t read_index(info_t *, int);
     status_t archive(int_t);
-    status_t extractbatch(uint_t, Queries *, int_t &);
+
+    template <typename T>
+    status_t extractbatch(uint_t, Queries<T> *, int_t &);
+
+    void setFilename(string_t &);
     status_t DeinitQueryFile();
     BOOL isDeInit();
     uint_t getQfileIndex();
@@ -110,5 +157,7 @@ public:
     info_t& Info();
 
     bool_t isinit();
+
+    static void flushBinaryFile(string_t *filename, spectype_t *m_mzs, spectype_t *m_intns, float *rtimes, float *prec_mz, int *z, int *lens, int count, bool close = false);
 
 };

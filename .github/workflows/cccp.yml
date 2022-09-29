@@ -19,11 +19,11 @@ jobs:
     - name: configure
       run: |
         cd build-rel
-        CC=$(which gcc) CXX=$(which g++) cmake -DCMAKE_INSTALL_PREFIX=../install-rel -DUSE_MPI=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=17 ..
+        CC=$(which gcc) CXX=$(which g++) cmake -DCMAKE_INSTALL_PREFIX=../install-rel -DUSE_MPI=OFF -DCMAKE_BUILD_TYPE=Release -DCXX_STANDARD=17 ..
         cd ../build-deb
-        CC=$(which gcc) CXX=$(which g++) cmake -DCMAKE_INSTALL_PREFIX=../install-deb -DUSE_MPI=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=17 ..
+        CC=$(which gcc) CXX=$(which g++) cmake -DCMAKE_INSTALL_PREFIX=../install-deb -DUSE_MPI=OFF -DCMAKE_BUILD_TYPE=Debug -DCXX_STANDARD=17 ..
         cd ../build-relwithdeb
-        CC=$(which gcc) CXX=$(which g++) cmake -DCMAKE_INSTALL_PREFIX=../install-relwithdeb -DUSE_MPI=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=17 ..
+        CC=$(which gcc) CXX=$(which g++) cmake -DCMAKE_INSTALL_PREFIX=../install-relwithdeb -DUSE_MPI=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCXX_STANDARD=17 ..
     - name: build
       run: |
         cd build-rel

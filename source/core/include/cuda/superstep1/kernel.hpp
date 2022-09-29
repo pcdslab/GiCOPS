@@ -66,6 +66,10 @@ uint_t*& getATcols(int size = 0);
 
 uint_t*& getFragIon();
 
+dIndex*& getdIndex(Index *Index = nullptr);
+
+void freedIndex();
+
 } // namespace s1
 
 } // namespace cuda

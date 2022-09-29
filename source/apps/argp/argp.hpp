@@ -182,6 +182,9 @@ struct params_t : public argparse::Args
     std::optional<std::vector<std::string>> &mods     
                                          = kwarg("m,mods", "list of variable post-translational modifications (PTMs)").multi_argument();
 
+    // do not keep the full database index on GPU
+    bool &nogpuindex                     = flag("ngi,nogpuindex", "GiCOPS: do not keep full database index on GPU (default: true)");
+
     // re-index MS/MS data and create and index
     bool &reindex                        = flag("reindex", "rebuild/update the MS/MS dataset index");
 
@@ -217,6 +220,9 @@ void getParams(gParams &params)
     params.dbpath = parser.dbpath;
     params.datapath = parser.dataset;
     params.workspace = parser.workspace;
+
+    // set the fullgIndex if not disabled
+    params.gpuindex = !parser.nogpuindex;
 
     // auto sanitize and set data extension
     params.setindexAndCache(parser.reindex, parser.nocache);

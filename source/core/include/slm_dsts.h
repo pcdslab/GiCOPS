@@ -295,21 +295,19 @@ struct BYC
     long_t      iyc; // y ion intensities
 };
 
-typedef struct _SLMchunk
+struct DSLIM_Matrix
 {
     uint_t    *iA; // Ions Array (iA)  
     uint_t    *bA; // Bucket Array (bA)
 
-    _SLMchunk()
+    DSLIM_Matrix()
     {
         iA = NULL;
         bA = NULL;
     }
+};
 
-#ifdef FUTURE
-    uchar_t *bits = NULL; // Scorecard bits
-#endif /* FUTURE */
-} SLMchunk;
+using spmat_t = DSLIM_Matrix;
 
 /* Structure for each pep file */
 typedef struct _Index
@@ -327,7 +325,7 @@ typedef struct _Index
 
     PepSeqs     pepIndex;
     pepEntry *pepEntries;
-    SLMchunk   *ionIndex;
+    spmat_t    *ionIndex;
 
     _Index()
     {
@@ -381,6 +379,7 @@ enum FileType_t {
     bool_t useGPU;
     bool_t reindex;
     bool_t nocache;
+    bool_t gpuindex;
 
     double_t dM;
     double_t res;
@@ -417,6 +416,7 @@ enum FileType_t {
         useGPU = false;
         reindex = true;
         nocache = false;
+        gpuindex = true;
         nodes = 1;
         myid = 0;
         spadmem = 2048;
@@ -480,6 +480,7 @@ enum FileType_t {
         printVar(useGPU);
         printVar(reindex);
         printVar(nocache);
+        printVar(gpuindex);
         printVar(min_int);
         printVar(nodes);
         printVar(myid);
@@ -1042,6 +1043,12 @@ typedef struct _ebuffer
     }
 
 } ebuffer;
+
+struct dIndex
+{
+    int nChunks = 0;
+    spmat_t   *ionIndex;
+};
 
 #if defined (USE_GPU)
 

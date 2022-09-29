@@ -173,7 +173,7 @@ status_t DSLIM_AllocateMemory(Index *index)
     uint_t speclen = ((index->pepIndex.peplen-1) * iSERIES * maxz);
 
     /* Initialize DSLIM pepChunks */
-    index->ionIndex = new SLMchunk[Chunks];
+    index->ionIndex = new spmat_t[Chunks];
 
     if (index->ionIndex != NULL)
     {
@@ -677,7 +677,7 @@ status_t DSLIM_DeallocateIonIndex(Index *index)
     /* Deallocate all the DSLIM chunks */
     for (uint_t chno = 0; chno < index->nChunks; chno++)
     {
-        SLMchunk curr_chunk = index->ionIndex[chno];
+        spmat_t curr_chunk = index->ionIndex[chno];
 
         if (curr_chunk.bA != NULL)
         {

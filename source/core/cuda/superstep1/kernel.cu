@@ -307,6 +307,98 @@ __host__ uint_t*& getATcols(int size)
 
 // -------------------------------------------------------------------------------------------- //
 
+__host__ dIndex*& getdIndex(Index *index)
+{
+    static thread_local dIndex *d_index = nullptr;
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+
+    int idxchunks = params.max_len - params.min_len + 1;
+
+    // allocate device vector only once
+    if (d_index == nullptr && index != nullptr)
+    {
+        const uint_t bAsize = ((uint_t)(params.max_mass * params.scale)) + 1;
+
+        d_index = new dIndex[idxchunks];
+
+        for (int ij = 0; ij < idxchunks; ij++)
+        {
+            Index *curr_index = &index[ij];
+            dIndex *curr_dindex = &d_index[ij];
+
+            curr_dindex->nChunks = curr_index->nChunks;
+
+            // allocate nChunks of SLMchunk
+            curr_dindex->ionIndex = new spmat_t[curr_index->nChunks];
+
+            uint_t speclen = (curr_index->pepIndex.peplen - 1) * params.maxz * iSERIES;
+
+            // construct for each intra-chunk (within each length)
+            for (int chno = 0; chno < curr_index->nChunks; chno++)
+            {
+                /* Check if this chunk is the last chunk */
+                uint_t nsize = ((chno == curr_index->nChunks - 1) && (curr_index->nChunks > 1))?
+                    curr_index->lastchunksize : curr_index->chunksize;
+
+                uint_t iAsize = nsize * speclen;
+                hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(curr_dindex->ionIndex[chno].bA, bAsize, driver->stream[1]));
+
+                hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(curr_dindex->ionIndex[chno].bA, curr_index->ionIndex[chno].bA, bAsize, driver->stream[1]));
+
+                hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(curr_dindex->ionIndex[chno].iA, iAsize, driver->stream[1]));
+
+                hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(curr_dindex->ionIndex[chno].iA, curr_index->ionIndex[chno].iA, iAsize, driver->stream[1]));
+            }
+        }
+    }
+
+    driver->stream_sync(1);
+
+    return d_index;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+__host__ void freedIndex()
+{
+    auto &&d_index = getdIndex();
+
+    auto driver = hcp::gpu::cuda::driver::get_instance();
+
+    int idxchunks = params.max_len - params.min_len + 1;
+
+    if (d_index != nullptr)
+    {
+        for (int ij = 0; ij < idxchunks; ij++)
+        {
+            dIndex *curr_dindex = &d_index[ij];
+
+            int nchunks = curr_dindex->nChunks;
+
+            if (nchunks > 0)
+            {
+                for (int chno = 0; chno < nchunks; chno++)
+                {
+                    if (curr_dindex->ionIndex[chno].bA)
+                        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(curr_dindex->ionIndex[chno].bA, driver->stream[0]));
+
+                    if (curr_dindex->ionIndex[chno].iA)
+                        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(curr_dindex->ionIndex[chno].iA, driver->stream[0]));
+                }
+            }
+
+            curr_dindex->nChunks = 0;
+        }
+
+        driver->stream_sync(0);
+
+        delete[] d_index;
+        d_index = nullptr;
+    }
+}
+
+// -------------------------------------------------------------------------------------------- //
+
 __host__ uint_t*& getbA()
 {
     static thread_local uint_t *d_bA = nullptr;

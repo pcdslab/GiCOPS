@@ -100,7 +100,7 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
                         dhCell *d_topscore, int dF, int speclen, int maxmass, int scale, short min_shp, int ixx);
 
 // database search kernel host wrapper
-__host__ status_t SearchKernel(Queries<spectype_t> *, int, int);
+__host__ status_t SearchKernel(spmat_t *mat, Queries<spectype_t> *, int, int);
 
 // compute min and max limits for the spectra
 __host__ status_t MinMaxLimits(Queries<spectype_t> *, Index *, double dM);
@@ -398,20 +398,27 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
     // transfer experimental data to device
     dqueries->H2D(gWorkPtr);
 
-    // number of spectra in the current batch
-    //int nspectra = gWorkPtr->numSpecs;
-
     // get instance of the driver
     static thread_local auto driver = hcp::gpu::cuda::driver::get_instance();
+
+    dIndex *d_Index = nullptr;
+    
+    if (params.gpuindex)
+        d_Index = hcp::gpu::cuda::s1::getdIndex(index);
 
     // sync all data streams
     driver->stream_sync(DATA_STREAM);
 
     // search for each database chunk (by length)
-    for (int i = 0; i < idxchunks ; i++)
+    for (int i = 0; i < idxchunks; i++)
     {
         // get the current index portion (by length)
         Index *curr_index = &index[i];
+        dIndex *curr_dindex = nullptr;
+
+        // get the current index chunk if required
+        if (params.gpuindex)
+            curr_dindex = &d_Index[i];
 
         // FIXME: make min-max limits for the spectra in the current chunk
         status = hcp::gpu::cuda::s3::MinMaxLimits(gWorkPtr, curr_index, params.dM);
@@ -419,44 +426,54 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
         uint_t speclen = (curr_index->pepIndex.peplen - 1) * params.maxz * iSERIES;
 
         // construct for each intra-chunk (within each length)
-        for (int chno = 0; chno < index->nChunks && status == SLM_SUCCESS; chno++)
+        for (int chno = 0; chno < curr_index->nChunks && status == SLM_SUCCESS; chno++)
         {
-    
-#if 0       // TODO: Leave this or remove this
+            spmat_t *d_mat;
 
-            // build the AT columns. i.e. the iAPtr
-            status = hcp::gpu::cuda::s1::ConstructIndexChunk(curr_index, chno, true);
-            auto d_iA = hcp::gpu::cuda::s1::getATcols();
+            // check if full index at GPU
+            if (params.gpuindex)
+                // get the spmat_t for the current chunk
+                d_mat = &curr_dindex->ionIndex[chno];
+            else
+            {
+                if (false) // FIXME: reconstruct the ionIndex?
+                {
+                    // build the AT columns. i.e. the iAPtr
+                    status = hcp::gpu::cuda::s1::ConstructIndexChunk(curr_index, chno, true);
+                    d_mat->iA = hcp::gpu::cuda::s1::getATcols();
+                }
+                else
+                {
+                    /* Check if this chunk is the last chunk */
+                    uint_t nsize = ((chno == curr_index->nChunks - 1) && (curr_index->nChunks > 1))?
+                       curr_index->lastchunksize : curr_index->chunksize;
 
-#else
+                    uint_t *iAPtr = curr_index->ionIndex[chno].iA;
+                    uint_t iAsize = nsize * speclen;
 
-            /* Check if this chunk is the last chunk */
-            uint_t nsize = ((chno == curr_index->nChunks - 1) && (curr_index->nChunks > 1))?
-                   curr_index->lastchunksize : curr_index->chunksize;
+                    // copy the At columns to the device instead
+                    d_mat->iA = hcp::gpu::cuda::s1::getATcols(iAsize);
 
-            uint_t *iAPtr = curr_index->ionIndex[chno].iA;
-            uint_t iAsize = nsize * speclen;
+                    hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_mat->iA, iAPtr, iAsize, driver->stream[DATA_STREAM]));
+                }
 
-            // copy the At columns to the device instead
-            auto d_iA = hcp::gpu::cuda::s1::getATcols(iAsize);
+                // copy the At rows to device 
+                d_mat->bA = hcp::gpu::cuda::s1::getbA();
+                uint_t bAsize = ((uint_t)(params.max_mass * params.scale)) + 1;
 
-            hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_iA, iAPtr, iAsize, driver->stream[DATA_STREAM]));
-#endif // 1
+                hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_mat->bA, curr_index->ionIndex[chno].bA, bAsize, driver->stream[DATA_STREAM]));
 
-            // copy the At rows to device 
-            auto d_bA = hcp::gpu::cuda::s1::getbA();
-            uint_t bAsize = ((uint_t)(params.max_mass * params.scale)) + 1;
-
-            hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_bA, curr_index->ionIndex[chno].bA, bAsize, driver->stream[DATA_STREAM]));
-
-            // synch both streams
-            driver->stream_sync(DATA_STREAM);
+                // synch both streams
+                driver->stream_sync(DATA_STREAM);
+            }
 
             // search against the database
-            status = hcp::gpu::cuda::s3::SearchKernel(gWorkPtr, speclen, i);
+            status = hcp::gpu::cuda::s3::SearchKernel(d_mat, gWorkPtr, speclen, i);
 
-            // free the AT columns
-            hcp::gpu::cuda::s1::freeATcols();
+            // if chunked index then free AT columns
+            if (!params.gpuindex)
+                // free the AT columns
+                hcp::gpu::cuda::s1::freeATcols();
         }
     }
 
@@ -531,7 +548,7 @@ __host__ status_t MinMaxLimits(Queries<spectype_t> *h_WorkPtr, Index *index, dou
 
 // -------------------------------------------------------------------------------------------- //
 
-__host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int ixx)
+__host__ status_t SearchKernel(spmat_t *mat, Queries<spectype_t> *gWorkPtr, int speclen, int ixx)
 {
     status_t status = SLM_SUCCESS;
 
@@ -540,12 +557,11 @@ __host__ status_t SearchKernel(Queries<spectype_t> *gWorkPtr, int speclen, int i
     // number of spectra in the current batch
     int nspectra = gWorkPtr->numSpecs;
 
-    auto d_iA = hcp::gpu::cuda::s1::getATcols();
-    auto d_bA = hcp::gpu::cuda::s1::getbA();
+    auto d_iA = mat->iA;
+    auto d_bA = mat->bA;
 
     // get driver object
     auto driver = hcp::gpu::cuda::driver::get_instance();
-
 
     const int itersize = SEARCHINSTANCES;
 
@@ -934,11 +950,11 @@ __global__ void vector_plus_constant(T *vect, T val, int size)
 
 status_t deinitialize()
 {
+    // free the memory if allocated
+    hcp::gpu::cuda::s1::freedIndex();
     hcp::gpu::cuda::s1::freeATcols();
     hcp::gpu::cuda::s1::freeFragIon();
     hcp::gpu::cuda::s1::freebA();
-    // FIXME: why cuda error here
-    // even if reallocate, then only one unit mem
 
     freedQueries();
 

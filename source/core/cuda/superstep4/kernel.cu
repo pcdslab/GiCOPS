@@ -55,6 +55,15 @@ namespace cuda
 namespace s4
 {
 
+struct compare_dhCell
+{
+    __host__ __device__ 
+    bool operator()(dhCell lhs, dhCell rhs)
+    {
+        return lhs.hyperscore < rhs.hyperscore; 
+    }
+};
+
 // gumbel curve fitting
 __global__ void logWeibullFit(dScores_t *d_Scores, double *evalues, short min_cpsm);
 
@@ -494,13 +503,30 @@ __host__ status_t processResults(Index *index, Queries<spectype_t> *gWorkPtr, in
 
     int numSpecs = gWorkPtr->numSpecs;
 
-    const int nthreads = 1024;
+    // get top scores back to CPU memory
+    dhCell *h_topscore = new dhCell[numSpecs];
 
-    int blockSize = std::min(nthreads, HISTOGRAM_SIZE);
-    // short min_cpsm = params.min_cpsm;
+    // transfer data to host
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_topscore, d_Scores->topscore, numSpecs, driver->stream[DATA_STREAM]));
+
+    // get the cell with the largest topscore (hyperscore)
+    dhCell *largest = std::max_element(h_topscore, h_topscore + numSpecs, compare_dhCell());
 
     // make sure the data stream is in sync
     driver->stream_sync(DATA_STREAM);
+
+    // max nthreads per block
+    const int nthreads = 1024;
+
+    // use the top hscore to set the number of threads per block
+    int maxhscore = (largest->hyperscore * 10 + 0.5) + 1;
+
+    int blockSize = std::min(nthreads, HISTOGRAM_SIZE);
+    blockSize = std::min(blockSize, maxhscore);
+
+    // contingency in case blockSize comes out to zero
+    blockSize = std::max(blockSize, 256);
+
 
 #if defined (TAILFIT) || true
 
@@ -527,12 +553,10 @@ __host__ status_t processResults(Index *index, Queries<spectype_t> *gWorkPtr, in
     driver->stream_sync(SEARCH_STREAM);
 
     // asynchronously copy the dhCell and cpsms to hostmem for writing to file
-    dhCell *h_topscore = new dhCell[numSpecs];
     int *h_cpsms = new int[numSpecs];
     double *h_evalues = new double[numSpecs];
 
     // transfer data to host
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_topscore, d_Scores->topscore, numSpecs, driver->stream[DATA_STREAM]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_cpsms, d_Scores->cpsms, numSpecs, driver->stream[DATA_STREAM]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::D2H(h_evalues, d_evalues, numSpecs, driver->stream[DATA_STREAM]));
 

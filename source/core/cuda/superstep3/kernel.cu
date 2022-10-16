@@ -592,7 +592,7 @@ __host__ status_t SearchKernel(spmat_t *mat, Queries<spectype_t> *gWorkPtr, int 
         if (iter == niters - 1)
             nblocks = nspectra - iter * itersize;
 
-        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(48), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter * itersize, d_BYC, maxchunk, d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
+        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(32), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter * itersize, d_BYC, maxchunk, d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
 
         // synchronize the stream
         driver->stream_sync(SEARCH_STREAM);

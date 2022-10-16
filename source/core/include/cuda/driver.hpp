@@ -162,10 +162,10 @@ public:
     // ------------------------------------------------------------------------------------ //
 
     // We can have multiple concurrent resident kernels 
-    // per devicedepending on device compute capability
+    // per device depending on device compute capability
     static driver* get_instance()
     {
-        static thread_local driver instance;
+        static driver instance;
         return &instance;
     }
 };

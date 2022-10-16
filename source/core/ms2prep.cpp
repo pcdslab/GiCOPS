@@ -92,7 +92,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
     int_t cputhreads = params.threads;
 
 #if defined(USE_GPU)
-    int_t gputhreads = 2 ; // fixme: params.gputhreads;
+    int_t gputhreads = params.threads && params.useGPU;
     cputhreads -= gputhreads;
 #endif // defined(USE_GPU)
 

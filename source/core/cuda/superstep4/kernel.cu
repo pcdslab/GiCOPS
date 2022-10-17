@@ -73,7 +73,7 @@ __global__ void TailFit(double *survival, int *cpsms, dhCell *topscore, double *
 // alternate tail fit method
 __global__ void TailFit(double_t *data, float_t *hyp, int *cpsms, double *evalues, short min_cpsms);
 
-template <class T>
+template <typename T>
 __device__ void LinearFit(T* x, T* y, int_t n, double_t *a, double_t *b);
 
 template <typename T>

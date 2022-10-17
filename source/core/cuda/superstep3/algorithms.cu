@@ -36,68 +36,176 @@ namespace s3
 
 // -------------------------------------------------------------------------------------------- //
 
-__device__ void lower_bound(uint_t *data, int size, int *lbound, int t)
+// will return the index of the element where lower_bound satisfies
+template <typename T>
+__device__ int lower_bound_inner(T *start, T *end, T target)
 {
-    int n = size;
- 
-    // if there are no elements in nums
-    if(n==0 || data[n-1] < t)
-        *lbound = n;
-    else if (data[0] >= t)
-        *lbound = 0;
-    else
-    {
-        // initialized low(l), and high(r)
-        int l=0;
-        int r = n-1;
-        int m = l + (r-l)/2;
+    int sz = end - start;
 
-        while(l <= r)
-        {
-            m = l + (r-l)/2;
-            if(data[m]>=t)
-                r = m-1;
-            else
-                l = m+1;
-        }
+    // start element is larger than the target
+    if (sz == 0 || start[0] >= target)
+        return 0;
 
-        *lbound = l;
-    }
+    // last element is smaller than the target
+    if (end[-1] < target)
+        return sz;
 
-    return;
+    __shared__ int idx;
+
+    if (threadIdx.x > 0 && threadIdx.x < sz && start[threadIdx.x] >= target && start[threadIdx.x - 1] < target)
+        idx = threadIdx.x;
+
+    __syncthreads();
+
+    int l_idx = idx;
+
+    return l_idx;
 }
 
 // -------------------------------------------------------------------------------------------- //
 
-__device__ void upper_bound(uint_t *data, int size, int *ubound, int t)
+template <typename T>
+__device__ T * lower_bound(T *start, const int n, T target)
 {
-    int n = size;
+    short tid = threadIdx.x;
+    short bsize = blockDim.x;
 
-    // if there are no elements in nums
-    if(n==0 || data[0] > t)
-        *ubound = -1;
-    else if (data[n-1] <= t)
-        *ubound = n-1;
-    else
+    T *l_start = start;
+    T *l_end = start + n;
+    int l_size = n;
+
+    // make splitters and keep finding the range
+    while (l_size > bsize)
     {
-        // initialized low(l), and high(r)
-        int l=0;
-        int r = n-1;
-        int m = l + (r-l)/2;
+        // start element is larger than the target
+        if (l_size == 0 || l_start[0] >= target)
+            return l_start;
 
-        while(l <= r)
-        {
-            m = l + (r-l)/2;
-            if(data[m]<=t)
-                l = m+1;
-            else
-                r = m-1;
-        }
+        // last element is smaller than the target
+        if (l_end[-1] < target)
+            return l_end;
 
-        *ubound = r;
+        int partsize = l_size / (bsize - 1);
+        T myVal = l_start[partsize * tid];
+
+        if (tid == bsize - 1)
+            myVal = l_end[-1];
+
+        T lastVal = 0;
+
+        if (tid > 0)
+            lastVal = l_start[partsize * (tid - 1)];
+
+        __shared__ int idx;
+
+
+        if (threadIdx.x > 0 && myVal >= target && lastVal < target)
+            idx = threadIdx.x;
+
+        __syncthreads();
+
+        // update limits
+        if (idx < bsize - 1)
+            l_end = l_start + (partsize * idx) + 1;
+
+        // warning: do not update l_start before updating l_end
+        l_start = l_start + partsize * (idx - 1);
+        l_size = l_end - l_start;
+
+        __syncthreads();
+
     }
 
-    return;
+    if (l_size < bsize)
+        return l_start + lower_bound_inner(l_start, l_end, target);
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+// will return the index of the element where lower_bound satisfies
+template <typename T>
+__device__ int upper_bound_inner(T *start, T *end, T target)
+{
+    int size = end - start;
+
+    // start element is larger than the target
+    if (size == 0 || start[0] > target)
+        return -1;
+
+    // last element is smaller than the target
+    if (end[-1] <= target)
+        return size-1;
+
+    __shared__ int idx;
+
+    if (threadIdx.x < size && threadIdx.x < size && start[threadIdx.x + 1] > target && start[threadIdx.x] <= target)
+        idx = threadIdx.x;
+
+    __syncthreads();
+
+    int l_idx = idx;
+
+    return l_idx;
+}
+
+// -------------------------------------------------------------------------------------------- //
+
+template <typename T>
+__device__ T * upper_bound(T *start, const int n, T target)
+{
+    short tid = threadIdx.x;
+    short bsize = blockDim.x;
+
+    T *l_start = start;
+    T *l_end = start + n;
+    int l_size = n;
+
+    // make splitters and keep finding the range
+    while (l_size > bsize)
+    {
+        // start element is larger than the target
+        if (l_size == 0 || l_start[0] > target)
+            return l_start-1;
+
+        // last element is smaller than the target
+        if (l_end[-1] <= target)
+            return l_end-1;
+
+        int partsize = l_size / (bsize - 1);
+        T myVal = l_start[partsize * tid];
+
+        if (tid == bsize - 1)
+            myVal = l_end[-1];
+
+        T nextVal = 0;
+
+        if (tid < bsize - 2)
+            nextVal = l_start[partsize * (tid +1)];
+        else
+            nextVal = l_end[-1];
+
+        __shared__ int idx;
+
+        if (threadIdx.x < bsize && myVal <= target && nextVal > target)
+            idx = threadIdx.x;
+
+        __syncthreads();
+
+        // update limits
+        if (idx < bsize - 2)
+            l_end = l_start + partsize * (idx + 1) + 1;
+
+        // warning: do not update l_start before updating l_end
+        l_start = l_start + partsize * idx;
+
+        l_size = l_end - l_start;
+
+        __syncthreads();
+
+    }
+
+    if (l_size < bsize)
+        return l_start + upper_bound_inner(l_start, l_end, target);
 }
 
 // -------------------------------------------------------------------------------------------- //
@@ -119,7 +227,7 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
     __syncthreads();
 
     // for all ions
-    for (int ion = tid; ion < irange ; ion += blockDim.x)
+    for (int ion = 0; ion < irange; ion++)
     {
         // main ion
         auto myion = QAPtr[ion/bucket];
@@ -130,8 +238,6 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
         auto qion = myion + myion_offset;
 
         int maxionmass = (maxmass * scale) - 1 - dF;
-
-        //printf("tid: %d, qion: %d\n", tid, qion);
 
         // check for legal ion mass
         if (myion > dF && myion <= maxionmass)
@@ -145,19 +251,27 @@ __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint 
                 continue;
 
             // lowerbound limit
-            int target = minlimit * speclen;
+            uint_t target = minlimit * speclen;
+
+            __syncthreads();
 
             // compute lower bound
-            lower_bound(data_ptr, data_size, &minions[ion], target);
-
-            __threadfence_block();
+            auto lower = lower_bound(data_ptr, data_size, target) - data_ptr;
 
             // upperbound limit
             target = (((maxlimit + 1) * speclen) - 1);
 
-            upper_bound(data_ptr, data_size, &maxions[ion], target);
+            __syncthreads();
 
-            __threadfence_block();
+            auto upper = upper_bound(data_ptr, data_size, target) - data_ptr;
+
+            __syncthreads();
+
+            minions[ion] = lower;
+            maxions[ion] = upper;
+
+            __syncthreads();
+
         }
     }
 
@@ -331,6 +445,8 @@ __device__ void blockSum(T val, T &sum)
 
 // instantiate the templates
 template __device__ void blockSum<int>(int val, int &sum);
+template __device__ uint_t * lower_bound<uint_t>(uint_t *start, const int n, uint_t target);
+template __device__ uint_t * upper_bound<uint_t>(uint_t *start, const int n, uint_t target);
 
 // -------------------------------------------------------------------------------------------- //
 

@@ -49,536 +49,200 @@ __device__ int log2ceil(unsigned long long x)
 
   return y;
 }
+
+// will return the index of the element where lower_bound satisfies
 template <typename T>
-__device__ void largmax(T *data, short i1, short i2, T val, short &out)
+__device__ int lower_bound_inner(T *start, T *end, T target)
 {
-    short tid = threadIdx.x;
-    short warpsize = 32;
-    short warpId = tid / warpsize;
-    short laneId = tid % warpsize;
-    short size = (i2-i1+1);
-    short nwarps = size / warpsize;
-    nwarps += (size % warpsize) ? 1 : 0;
+    int size = end - start;
 
-    // get the max element
-    short myIdx = i1 + threadIdx.x;
-    T myVal = 0;
+    // start element is larger than the target
+    if (size == 0 || start[0] >= target)
+        return 0;
 
-    if (myIdx <= i2)
-        myVal = data[myIdx];
+    // last element is smaller than the target
+    if (end[-1] < target)
+        return size;
 
-    unsigned mask  = __ballot_sync(0xffffffff, myIdx <= i2);
+    __shared__ int idx;
 
-    for(int offset = warpsize / 2; offset > 0; offset /= 2)
-    {
-        T tempVal = __shfl_down_sync(mask, myVal, offset);
-        short tempIdx = __shfl_down_sync(mask, myIdx, offset);
-
-        if (tempVal <= val)
-        {
-            if (myVal > val || tempIdx < myIdx)
-            {
-                myVal = tempVal;
-                myIdx = tempIdx;
-            }
-        }
-    }
-
-
-    __shared__ T locVal[32];
-    __shared__ short locIdx[32];
-
-    if (laneId == 0)
-    {
-        locVal[warpId] = myVal;
-        locIdx[warpId] = myIdx;
-    }
+    if (threadIdx.x > 0 && threadIdx.x < size && start[threadIdx.x] >= target && start[threadIdx.x - 1] < target)
+        idx = threadIdx.x;
 
     __syncthreads();
 
-    if (tid < nwarps)
+    if (!threadIdx.x)
     {
-        myVal = locVal[tid];
-        myIdx = locIdx[tid];
+        printf("Inner: size: %d, idx:%d\n", size, idx);
     }
 
-   __syncthreads();
+    int l_idx = idx;
 
-    // check if the val at the zeroth idx is good to go
-    if (warpId == 0)
-    {
-        unsigned int mask  = __ballot_sync(0xffffffff, tid < nwarps);
-
-        for(int offset = warpsize / 2; offset > 0; offset /= 2)
-        {
-            T tempVal = __shfl_down_sync(mask, myVal, offset);
-            short tempIdx = __shfl_down_sync(mask, myIdx, offset);
-
-            if (tempVal <= val)
-            {
-                if (myVal > val || tempIdx < myIdx)
-                {
-                    myVal = tempVal;
-                    myIdx = tempIdx;
-                }
-            }
-        }
-    }
-
-    __syncthreads();
-
-    // the final value should be at location zero
-    if (tid == 0)
-    {
-        if (myVal <= val)
-            locIdx[0] = myIdx;
-        else
-            locIdx[0] = i1;
-    }
-
-    __syncthreads();
-
-    out = locIdx[0];
-}
-
-// -------------------------------------------------------------------------------------------- //
-
-template <typename T>
-__device__ void argmax(T *data, short i1, short i2, T val, short &out)
-{
-    short tid = threadIdx.x;
-    short warpsize = 32;
-    short warpId = tid / warpsize;
-    short laneId = tid % warpsize;
-    short size = (i2-i1+1);
-    short nwarps = size / warpsize;
-    nwarps += (size % warpsize) ? 1 : 0;
-
-    // get the max element
-    short myIdx = i1 + threadIdx.x;
-    T myVal = 0;
-
-    if (myIdx <= i2)
-        myVal = data[myIdx];
-
-    unsigned mask  = __ballot_sync(0xffffffff, myIdx <= i2);
-
-    for(int offset = warpsize / 2; offset > 0; offset /= 2)
-    {
-        T tempVal = __shfl_down_sync(mask, myVal, offset);
-        short tempIdx = __shfl_down_sync(mask, myIdx, offset);
-
-        if (tempVal >= val)
-        {
-            if (myVal < val || tempIdx < myIdx)
-            {
-                myVal = tempVal;
-                myIdx = tempIdx;
-            }
-        }
-    }
-
-    __shared__ T locVal[32];
-    __shared__ short locIdx[32];
-
-    if (laneId == 0)
-    {
-        locVal[warpId] = myVal;
-        locIdx[warpId] = myIdx;
-    }
-
-    __syncthreads();
-
-    if (tid < nwarps)
-    {
-        myVal = locVal[tid];
-        myIdx = locIdx[tid];
-    }
-
-    // check if the val at the zeroth idx is good to go
-    if (warpId == 0)
-    {
-        unsigned int mask  = __ballot_sync(0xffffffff, tid < nwarps);
-
-        for(int offset = warpsize / 2; offset > 0; offset /= 2)
-        {
-            T tempVal = __shfl_down_sync(mask, myVal, offset);
-            short tempIdx = __shfl_down_sync(mask, myIdx, offset);
-
-            if (tempVal >= val)
-            {
-                if (myVal < val || tempIdx < myIdx)
-                {
-                    myVal = tempVal;
-                    myIdx = tempIdx;
-                }
-            }
-        }
-    }
-
-    __syncthreads();
-
-    // the final value should be at location zero
-    if (tid == 0)
-    {
-        if (myVal >= val)
-            locIdx[0] = myIdx;
-        else
-            locIdx[0] = i1;
-    }
-
-    __syncthreads();
-
-    out = locIdx[0];
-
-}
-
-// -------------------------------------------------------------------------------------------- //
-
-template <typename T>
-__device__ void rargmax(T *data, short i1, short i2, T val, short &out)
-{
-    short tid = threadIdx.x;
-    short warpsize = 32;
-    short warpId = tid / warpsize;
-    short laneId = tid % warpsize;
-    short size = (i2-i1+1);
-    short nwarps = size / warpsize;
-    nwarps += (size % warpsize) ? 1 : 0;
-
-    // get the max element
-    short myIdx = i1 + threadIdx.x;
-    T myVal = 0;
-
-    if (myIdx <= i2)
-        myVal = data[myIdx];
-
-    unsigned mask  = __ballot_sync(0xffffffff, myIdx <= i2);
-
-    for(int offset = warpsize / 2; offset > 0; offset /= 2)
-    {
-        T tempVal = __shfl_down_sync(mask, myVal, offset);
-        short tempIdx = __shfl_down_sync(mask, myIdx, offset);
-
-        if (tempIdx <= i2 && tempVal >= val && tempIdx > myIdx)
-        {
-            myVal = tempVal;
-            myIdx = tempIdx;
-        }
-    }
-
-    __shared__ T locVal[32];
-    __shared__ short locIdx[32];
-
-    if (laneId == 0)
-    {
-        locVal[warpId] = myVal;
-        locIdx[warpId] = myIdx;
-    }
-
-    __syncthreads();
-
-    if (tid < nwarps)
-    {
-        myVal = locVal[tid];
-        myIdx = locIdx[tid];
-    }
-
-    // check if the val at the zeroth idx is good to go
-    if (warpId == 0)
-    {
-        unsigned int mask  = __ballot_sync(0xffffffff, tid < nwarps);
-
-        for(int offset = warpsize / 2; offset > 0; offset /= 2)
-        {
-            T tempVal = __shfl_down_sync(mask, myVal, offset);
-            short tempIdx = __shfl_down_sync(mask, myIdx, offset);
-
-            if (tempIdx <= i2 && tempVal >= val && tempIdx > myIdx)
-            {
-                myVal = tempVal;
-                myIdx = tempIdx;
-            }
-        }
-    }
-
-    __syncthreads();
-
-    // the final value should be at location zero
-    if (tid == 0)
-    {
-        if (myVal >= val)
-            locIdx[0] = myIdx;
-        else
-            locIdx[0] = i2;
-    }
-
-    __syncthreads();
-
-    out = locIdx[0];
-
-}
-
-/* Slice off yyt between stt1 and end1 */
-template <typename T>
-__device__ void Assign(T *p_x, T *beg, T *end)
-{
-    short tid = threadIdx.x;
-    int size = end - beg;
-
-    for (int i = tid; i < size; i+=blockDim.x)
-        p_x[i] = beg[i];
-
-    __syncthreads();
+    return l_idx;
 }
 
 template <typename T>
-__device__ void prefixSum(T *beg, T *end, T *out)
+__device__ T * lower_bound(T *start, T *end, T target)
 {
     short tid = threadIdx.x;
-    int size = end - beg;
+    short bsize = blockDim.x;
 
-    // compute number of iterations
-    int iterations = log2ceil(size);
+    T *l_start = start;
+    T *l_end = end;
+    int l_size = l_end - l_start;
 
-    // compute prefix sum
-    for (int ij = 0; ij < iterations; ij ++)
+    // make splitters and keep finding the range
+    while (l_size > bsize)
     {
-        int offset = 1 << ij;
+        // start element is larger than the target
+        if (l_size == 0 || l_start[0] >= target)
+            return l_start;
 
-        if (tid >= offset && tid < size)
-            beg[tid] += beg[tid - offset];
+        // last element is smaller than the target
+        if (l_end[-1] < target)
+            return l_end;
+
+        int partsize = l_size / (bsize - 1);
+        T myVal = l_start[partsize * tid];
+
+        if (tid == bsize - 1)
+            myVal = l_end[-1];
+
+        T lastVal = 0;
+
+        if (tid > 0)
+            lastVal = l_start[partsize * (tid - 1)];
+
+        if (!tid)
+        {
+            printf("start: %d, end: %d, size: %d, partsize: %d, myVal: %d, lastVal: %d\n", (int)(l_start-start), (int)(l_end - start), l_size, partsize, myVal, lastVal);
+        }
+    
+        __shared__ int idx;
+
+        if (threadIdx.x > 0 && myVal >= target && lastVal < target)
+            idx = threadIdx.x;
 
         __syncthreads();
+
+        // update limits
+        if (idx < bsize - 1)
+            l_end = l_start + (partsize * idx) + 1;
+
+        // warning: do not update l_start before updating l_end
+        l_start = l_start + partsize * (idx - 1);
+
+        l_size = l_end - l_start;
+
+        __syncthreads();
+
+        if (!tid)
+        {
+            printf("start: %d, end: %d, size: %d, partsize: %d, myVal: %d, lastVal: %d, idx:%d\n", (int)(l_start-start), (int)(l_end - start), l_size, partsize, myVal, lastVal, idx);
+        }
+
     }
 
-    for (int im = tid; im < size; im+=blockDim.x)
-        out[im] = beg[im];
-
-    __syncthreads();
-
-    return;
+    if (l_size < bsize)
+        return l_start + lower_bound_inner(l_start, l_end, target);
 }
 
 
+// will return the index of the element where lower_bound satisfies
 template <typename T>
-__device__ void XYbar(T *x, T *y, int n, double &xbar, double &ybar)
+__device__ int upper_bound_inner(T *start, T *end, T target)
 {
-    short tid = threadIdx.x;
-    short warpsize = 32;
-    short warpId = tid / warpsize;
-    short laneId = tid % warpsize;
-    short nwarps = n / warpsize;
-    nwarps += (n % warpsize) ? 1 : 0;
+    int size = end - start;
 
-    T myX = 0;
-    T myY = 0;
+    // start element is larger than the target
+    if (size == 0 || start[0] > target)
+        return -1;
 
-    if (tid < n)
-    {
-        myX = x[tid];
-        myY = y[tid];
-    }
+    // last element is smaller than the target
+    if (end[-1] <= target)
+        return size-1;
 
-    // compute number of iterations
-    short iterations = log2ceil(warpsize);
+    __shared__ int idx;
 
-    unsigned mask  = __ballot_sync(0xffffffff, tid < n);
-
-    // compute prefix sum
-    for (int ij = 0; ij < iterations; ij ++)
-    {
-        int offset = 1 << ij;
-
-        T tempX = __shfl_down_sync(mask, myX, offset);
-        T tempY = __shfl_down_sync(mask, myY, offset);
-
-        myX += tempX;
-        myY += tempY;
-    }
-
-
-    // shared memory to spill partial sums
-    __shared__ T pX[32];
-    __shared__ T pY[32];
-
-    if (laneId == 0)
-    {
-        pX[warpId] = myX;
-        pY[warpId] = myY;
-    }
+    if (threadIdx.x < size && threadIdx.x < size && start[threadIdx.x + 1] > target && start[threadIdx.x] <= target)
+        idx = threadIdx.x;
 
     __syncthreads();
 
-    // write to spill memory
-    if (tid < nwarps)
+    if (!threadIdx.x)
     {
-        myX = pX[tid];
-        myY = pY[tid];
+        printf("Inner: size: %d, idx:%d\n", size, idx);
     }
 
-    // compute number of iterations
-    iterations = log2ceil(nwarps);
+    int l_idx = idx;
 
-    mask  = __ballot_sync(0xffffffff, tid < nwarps);
-
-    // compute prefix sum
-    for (int ij = 0; ij < iterations; ij ++)
-    {
-        int offset = 1 << ij;
-
-        T tempX = __shfl_down_sync(mask, myX, offset);
-        T tempY = __shfl_down_sync(mask, myY, offset);
-
-        myX += tempX;
-        myY += tempY;
-    }
-
-    __syncthreads();
-
-    // tid == 0 has the complete sum now
-    if (tid == 0)
-    {
-        pX[0] = myX;
-        pY[0] = myY;
-    }
-
-    __syncthreads();
-
-    xbar = pX[0];
-    ybar = pY[0];
+    return l_idx;
 }
 
 template <typename T>
-__device__ void TopBot(T *x, T *y, int n, const T xbar, const T ybar, T &top, T &bot)
+__device__ T * upper_bound(T *start, T *end, T target)
 {
     short tid = threadIdx.x;
-    short warpsize = 32;
-    short warpId = tid / warpsize;
-    short laneId = tid % warpsize;
-    short nwarps = n / warpsize;
-    nwarps += (n % warpsize) ? 1 : 0;
+    short bsize = blockDim.x;
 
-    T myX = 0;
-    T myY = 0; 
+    T *l_start = start;
+    T *l_end = end;
+    int l_size = l_end - l_start;
 
-    if (tid < n)
+    // make splitters and keep finding the range
+    while (l_size > bsize)
     {
-        myX = (x[tid] - xbar) * (y[tid] - ybar);
-        myY = (x[tid] - xbar) * (x[tid] - xbar);
+        // start element is larger than the target
+        if (l_size == 0 || l_start[0] > target)
+            return l_start-1;
+
+        // last element is smaller than the target
+        if (l_end[-1] <= target)
+            return l_end-1;
+
+        int partsize = l_size / (bsize - 1);
+        T myVal = l_start[partsize * tid];
+
+        if (tid == bsize - 1)
+            myVal = l_end[-1];
+
+        T nextVal = 0;
+
+        if (tid < bsize - 2)
+            nextVal = l_start[partsize * (tid +1)];
+        else
+            nextVal = l_end[-1];
+
+        if (!tid)
+        {
+            printf("start: %d, end: %d, size: %d, partsize: %d, myVal: %d, nextVal: %d\n", (int)(l_start-start), (int)(l_end - start), l_size, partsize, myVal, nextVal);
+        }
+    
+        __shared__ int idx;
+
+        if (threadIdx.x < bsize && myVal <= target && nextVal > target)
+            idx = threadIdx.x;
+
+        __syncthreads();
+
+        // update limits
+        if (idx < bsize - 2)
+            l_end = l_start + partsize * (idx + 1) + 1;
+
+        // warning: do not update l_start before updating l_end
+        l_start = l_start + partsize * idx;
+
+        l_size = l_end - l_start;
+
+        __syncthreads();
+
+        if (!tid)
+        {
+            printf("start: %d, end: %d, size: %d, partsize: %d, myVal: %d, nextVal: %d, idx:%d\n", (int)(l_start-start), (int)(l_end - start), l_size, partsize, myVal, nextVal, idx);
+        }
+
     }
 
-    // compute number of iterations
-    short iterations = log2ceil(warpsize);
-
-    unsigned mask  = __ballot_sync(0xffffffff, tid < n);
-
-    // compute prefix sum
-    for (int ij = 0; ij < iterations; ij ++)
-    {
-        int offset = 1 << ij;
-
-        T tempX = __shfl_down_sync(mask, myX, offset);
-        T tempY = __shfl_down_sync(mask, myY, offset);
-
-        myX += tempX;
-        myY += tempY;
-    }
-
-    // shared memory to spill partial sums
-    __shared__ T pX[32];
-    __shared__ T pY[32];
-
-    if (laneId == 0)
-    {
-        pX[warpId] = myX;
-        pY[warpId] = myY;
-    }
-
-    __syncthreads();
-
-    // write to spill memory
-    if (tid < nwarps)
-    {
-        myX = pX[tid];
-        myY = pY[tid];
-    }
-
-    // compute number of iterations
-    iterations = log2ceil(nwarps);
-
-    mask  = __ballot_sync(0xffffffff, tid < nwarps);
-
-    // compute prefix sum
-    for (int ij = 0; ij < iterations; ij ++)
-    {
-        int offset = 1 << ij;
-
-        T tempX = __shfl_down_sync(mask, myX, offset);
-        T tempY = __shfl_down_sync(mask, myY, offset);
-
-        myX += tempX;
-        myY += tempY;
-    }
-
-    __syncthreads();
-
-    // tid == 0 has the complete sum now
-    if (tid == 0)
-    {
-        pX[0] = myX;
-        pY[0] = myY;
-    }
-
-    __syncthreads();
-
-    top = pX[0];
-    bot = pY[0];
-
-    return;
-}
-
-template <class T>
-__device__ void LinearFit(T* x, T* y, int n, double *a, double *b, double *debug)
-{
-    double bot;
-    double top;
-    double xbar;
-    double ybar;
-
-    //
-    //  Special case.
-    //
-    if (n == 1)
-    {
-        *a = 0.0;
-        *b = y[0];
-    }
-    else
-    {
-        //
-        //  Average X and Y.
-        //
-        xbar = 0.0;
-        ybar = 0.0;
-
-        XYbar<double>(x, y, n, xbar, ybar);
-
-        xbar = xbar / (double) n;
-        ybar = ybar / (double) n;
-
-        //
-        //  Compute Beta.
-        //
-
-        top = 0.0;
-        bot = 0.0;
-
-        TopBot<double>(x, y, n, xbar, ybar, top, bot);
-
-        *a = top / bot;
-        *b = ybar - (*a) * xbar;
-    }
-
-    return;
+    if (l_size < bsize)
+        return l_start + upper_bound_inner(l_start, l_end, target);
 }

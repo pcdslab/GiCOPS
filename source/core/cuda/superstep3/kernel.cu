@@ -108,10 +108,7 @@ __host__ status_t MinMaxLimits(Queries<spectype_t> *, Index *, double dM);
 template <typename T>
 __global__ void vector_plus_constant(T *vect, T val, int size);
 
-
 __global__ void resetdScores(double *survival, int *cpsms, dhCell *topscores);
-
-extern __device__ void compute_minmaxions(int *minions, int *maxions, int *QAPtr, uint *d_bA, uint *d_iA, int dF, int qspeclen, int speclen, int minlimit, int maxlimit, int maxmass, int scale);
 
 extern __device__ void getMaxdhCell(dhCell &topscores, dhCell &out);
 
@@ -119,6 +116,12 @@ extern __device__ void getMinsurvival(double_t *survival, double_t *out);
 
 template <typename T>
 extern __device__ void blockSum(T val, T &sum);
+
+template <typename T>
+__device__ T * upper_bound(T *start, const int n, T target);
+
+template <typename T>
+__device__ T * lower_bound(T *start, const int n, T target);
 
 
 // -------------------------------------------------------------------------------------------- //
@@ -580,28 +583,22 @@ __host__ status_t SearchKernel(spmat_t *mat, Queries<spectype_t> *gWorkPtr, int 
     // set the shared memory to 48KB
     cudaFuncSetAttribute(SpSpGEMM, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
 
-    static double SpSpGEMMTime = 0.0;
-    MARK_START(SpSpGEMM);
-
     for (int iter = 0 ; iter < niters ; iter++)
     {
         int nblocks = itersize;
-        int blocksize = 320; // block size of 256 or 320 are good for better load factor 
+        const int blocksize = 320; // block size of 256 or 320 are good for better load factor 
 
         // if last iteration, adjust the number of blocks
         if (iter == niters - 1)
             nblocks = nspectra - iter * itersize;
 
-        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(48), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter * itersize, d_BYC, maxchunk, d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
+        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(32), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter * itersize, d_BYC, maxchunk, d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
 
         // synchronize the stream
         driver->stream_sync(SEARCH_STREAM);
     }
 
     MARK_END(SpSpGEMM);
-
-    SpSpGEMMTime += ELAPSED_SECONDS(SpSpGEMM);
-    std::cout << "SpSpGEMM Time: " << SpSpGEMMTime << std::endl;
 
     return status;
 }
@@ -671,21 +668,14 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     // shared memory
     extern __shared__ int shmem[];
 
-    // size for minions and maxions
-    const int minmaxsize = ((2 * dF) + 1) * QALEN;
-
-    int *minions = &shmem[0];
-    int *maxions = &minions[minmaxsize];
 
     // keys = ppid, vals = BYC for reduction
-    int *keys    = &maxions[minmaxsize];
+    int *keys    = &shmem[0];
     BYC *vals    = (BYC*)&keys[blockDim.x];
 
     // setup shared memory here
     __syncthreads();
 
-    // compute min and maxlimits for ions in minions and maxions
-    hcp::gpu::cuda::s3::compute_minmaxions(minions, maxions, QAPtr, d_bA, d_iA, dF, qspeclen, speclen, minlimit, maxlimit, maxmass, scale);
 
     // iterate over all ions
     for (int k = 0; k < qspeclen; k++)
@@ -696,10 +686,19 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
         // ion +-dF
         for (auto bin = qion - dF; bin < qion + 1 + dF; bin++)
         {
-            short binidx = k *(2*dF + 1) + dF - (qion - bin);
+            if (qion <= dF || qion >= ((maxmass * scale) - 1 - dF))
+                continue;
 
-            int off1 = minions[binidx];
-            int off2 = maxions[binidx];
+            auto data = d_iA + d_bA[bin];
+
+            int n = d_bA[bin + 1] - d_bA[bin];
+    
+            /* If no ions in the bin */
+            if (n < 1)
+                continue;
+
+            int off1 = lower_bound(data, n, (uint_t)(minlimit * speclen)) - data;
+            int off2 = upper_bound(data, n, (uint_t)(((maxlimit + 1) * speclen) - 1)) - data;
 
             int stt = d_bA[bin] + off1;
             int ends = d_bA[bin] + off2;

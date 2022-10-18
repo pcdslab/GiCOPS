@@ -342,6 +342,8 @@ void GPU_DistributedSearch(Index *index)
     Queries<spectype_t> *gWorkPtr = nullptr;
     int myspecId = 0;
 
+    MARK_START(gpu_search_time);
+
     for (int bid = 0;;)
     {
         // lock global batch lock
@@ -416,7 +418,8 @@ void GPU_DistributedSearch(Index *index)
             std::cout << "gSpectra:\t" << gWorkPtr->numSpecs << std::endl;
         }
 
-        MARK_START(gpu_search_time);
+        double SpSpGEMMTime = 0.0;
+        MARK_START(SpSpGEMM);
 
 #ifdef USE_MPI
         // Query the chunk
@@ -426,27 +429,30 @@ void GPU_DistributedSearch(Index *index)
         status = hcp::gpu::cuda::s3::search(gWorkPtr, index, (maxlen - minlen + 1), myspecId);
 #endif // USE_MPI
 
+        SpSpGEMMTime += ELAPSED_SECONDS(SpSpGEMM);
+        std::cout << "gSearch Time: " << SpSpGEMMTime << std::endl;
+
         status = qPtrs->lockw_();
 
         /* Request next I/O chunk */
         qPtrs->Replenish(gWorkPtr);
 
         status = qPtrs->unlockw_();
+    }
 
-        MARK_END(gpu_search_time);
+    MARK_END(gpu_search_time);
 
-        // locked section for gtime
-        {
-            std::unique_lock<std::mutex> gtime_lock(gtimelock);
-            // Compute Duration
-            gtime +=  ELAPSED_SECONDS(gpu_search_time);
-        }
+    // locked section for gtime
+    {
+        std::unique_lock<std::mutex> gtime_lock(gtimelock);
+        // Compute Duration
+        gtime +=  ELAPSED_SECONDS(gpu_search_time);
+    }
 
 #ifndef DIAGNOSE
-        if (params.myid == 0)
-            std::cout << "\nGPU Search Time:\t" << ELAPSED_SECONDS(gpu_search_time) << "s" << std::endl;
+    if (params.myid == 0)
+        std::cout << "\nGPU Search Time:\t" << ELAPSED_SECONDS(gpu_search_time) << "s" << std::endl;
 #endif /* DIAGNOSE */
-    }
 
     // free all GPU resources
     status = hcp::gpu::cuda::s3::deinitialize();
@@ -615,21 +621,32 @@ status_t DistributedSearch(Index *index)
     //
     // Overheads
     //
-
 #if defined (USE_GPU)
-    // FIXME: remove this - wait for GPU thread to stop
-    for (auto &thd : gpuSearchThds)
+
+    /* Start computing penalty */
+    MARK_START(goverhead);
+
+    if (params.useGPU)
     {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        thd.join();
+        for (auto &thd : gpuSearchThds)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            thd.join();
+        }
     }
+
+    /* Compute the penalty */
+    MARK_END(goverhead);
+
+    ptime += ELAPSED_SECONDS(goverhead);
+
 #endif // USE_GPU
 
     // print cumulative search time and penalty
     if (params.myid == 0)
     {
         std::cout << "\nCumulative Penalty:     " << ptime << "s" << std::endl;
-        std::cout << "\nCumulative Search Time: " << qtime + gtime << "s" << std::endl << std::endl;
+        std::cout << "\nCumulative Search Time: " << qtime << "s" << std::endl << std::endl;
     }
 
     /* Return the status of execution */

@@ -244,23 +244,23 @@ status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int 
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
     // device ptrs for raw and processed data and lengths
-    static thread_local spectype_t * d_intns = nullptr;
-    static thread_local spectype_t * d_mzs = nullptr;
-    static thread_local int *d_arraynums = nullptr;
-    static thread_local  int *d_indices = nullptr;
+    spectype_t * d_intns = nullptr;
+    spectype_t * d_mzs = nullptr;
+    int *d_arraynums = nullptr;
+    int *d_indices = nullptr;
 
-    static thread_local int *d_lens = nullptr;
-    static thread_local int *d_m_lens = nullptr;
+    int *d_lens = nullptr;
+    int *d_m_lens = nullptr;
 
     // output vectors
-    static thread_local spectype_t *d_m_intns = nullptr;
-    static thread_local spectype_t *d_m_mzs = nullptr;
+    spectype_t *d_m_intns = nullptr;
+    spectype_t *d_m_mzs = nullptr;
 
     // the raw buffer size
     int rawsize = idx;
 
     // temporary vector for data gathering
-    static thread_local spectype_t *d_tmp = nullptr;
+    spectype_t *d_tmp = nullptr;
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_tmp, rawsize, driver->stream[3])); //BATCHSIZE * TEMPVECTOR_SIZE));
 
     // -------------------------------------------------------------------------------------------- //
@@ -270,45 +270,37 @@ status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int 
     //
 
     // memory for intensities
-    if (d_intns == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_intns, rawsize, driver->stream[0])); //BATCHSIZE * TEMPVECTOR_SIZE));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_intns, rawsize, driver->stream[0]));
 
     // transfer intensities to the GPU
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_intns, intns, idx, driver->stream[0]));
 
     // memory for m/zs
-    if (d_mzs == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_mzs, rawsize, driver->stream[1])); //BATCHSIZE * TEMPVECTOR_SIZE));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_mzs, rawsize, driver->stream[1]));
 
     // transfer m/zs to the GPU
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_mzs, mzs, idx, driver->stream[1]));
 
     // memory for spectrum lengths
-    if (d_lens == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_lens, BATCHSIZE+1, driver->stream[2]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_lens, BATCHSIZE+1, driver->stream[2]));
 
     // transfer lengths to the GPU
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_lens, lens, count, driver->stream[2]));
 
     // memory for arraynums
-    if (d_arraynums == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_arraynums, rawsize, driver->stream[2])); //BATCHSIZE * TEMPVECTOR_SIZE));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_arraynums, rawsize, driver->stream[2])); 
 
     // memory for indices
-    if (d_indices == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_indices, rawsize, driver->stream[3])); //BATCHSIZE * TEMPVECTOR_SIZE));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_indices, rawsize, driver->stream[3])); 
 
     // memory for processed intensities
-    if (d_m_intns == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_intns, QALEN * BATCHSIZE, driver->stream[3]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_intns, QALEN * BATCHSIZE, driver->stream[3]));
 
     // memory for processed mzs
-    if (d_m_mzs == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_mzs, QALEN * BATCHSIZE, driver->stream[3]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_mzs, QALEN * BATCHSIZE, driver->stream[3]));
 
     // memory for new spectrum lengths
-    if (d_m_lens == nullptr)
-        hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_lens, BATCHSIZE+1, driver->stream[3]));
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_lens, BATCHSIZE+1, driver->stream[3]));
 
     // -------------------------------------------------------------------------------------------- //
 
@@ -414,10 +406,6 @@ status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int 
 
     // free the GPU memory
 
-    // if (last)
-    //{
-
-    // free the memories
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_mzs, driver->stream[0]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_intns, driver->stream[0]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_arraynums, driver->stream[0]));
@@ -428,7 +416,6 @@ status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int 
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_lens, driver->stream[0]));
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_m_lens, driver->stream[0]));
 
-    //}
 
     // return success status
     return SLM_SUCCESS;
@@ -471,7 +458,6 @@ std::array<int, 2> readAndPreprocess(string_t &filename)
     float *rtimes = new float[2 * BATCHSIZE];
     float *prec_mz = rtimes + BATCHSIZE;
     int *z = new int[BATCHSIZE];
-    
 
     /* Get a new ifstream object and open file */
     ifstream *qqfile = new ifstream(filename);

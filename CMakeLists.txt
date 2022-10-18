@@ -187,7 +187,7 @@ endif()
 
 # maximum hyperscore allowed
 if (NOT MAX_HYPERSCORE)
-    set(MAX_HYPERSCORE   100)
+    set(MAX_HYPERSCORE   80)
 endif()
 
 # maximum shared b- or y-ions allowed

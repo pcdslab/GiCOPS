@@ -24,7 +24,7 @@
 #include "slmerr.h"
 #include "dslim.h"
 
-const int SEARCHINSTANCES = 128;
+const int SEARCHINSTANCES = 320;
 
 const int SEARCH_STREAM = 0;
 const int DATA_STREAM = 1;

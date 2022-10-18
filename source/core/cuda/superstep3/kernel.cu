@@ -686,7 +686,7 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
         // ion +-dF
         for (auto bin = qion - dF; bin < qion + 1 + dF; bin++)
         {
-            if (qion <= dF && qion >= ((maxmass * scale) - 1 - dF))
+            if (qion <= dF || qion >= ((maxmass * scale) - 1 - dF))
                 continue;
 
             auto data = d_iA + d_bA[bin];

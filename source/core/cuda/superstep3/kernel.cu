@@ -118,10 +118,10 @@ template <typename T>
 extern __device__ void blockSum(T val, T &sum);
 
 template <typename T>
-__device__ T * upper_bound(T *start, const int n, T target);
+extern __device__ T * upper_bound(T *start, const int n, T target);
 
 template <typename T>
-__device__ T * lower_bound(T *start, const int n, T target);
+extern __device__ T * lower_bound(T *start, const int n, T target);
 
 
 // -------------------------------------------------------------------------------------------- //

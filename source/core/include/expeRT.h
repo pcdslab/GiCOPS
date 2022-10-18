@@ -59,9 +59,6 @@ class expeRT
 {
 private:
 
-    /* Size of histogram */
-    static const int_t SIZE = 2 + (MAX_HYPERSCORE * 10);
-
     /* Index number set 1 */
     int_t stt1;
     int_t end1;
@@ -114,6 +111,9 @@ private:
 
 public:
 
+    /* Size of histogram */
+    static const int_t SIZE = 2 + (MAX_HYPERSCORE * 10);
+
     /* Constructor */
     expeRT();
 
@@ -144,9 +144,14 @@ public:
     /* Model using log-Weibull in SHM */
     status_t ModelTailFit(Results *);
 
-
     /* Model the partial distribution using logWeibull */
     status_t Model_logWeibull(Results *);
+
+#if defined (USE_GPU) && defined (USE_MPI)
+
+    status_t Reconstruct(ebuffer *ebs, int_t specno, partRes *fR, double *target);
+
+#endif // USE_GPU && USE_MPI
 
 #if 0
     /* In case of distributed memory, we will call this */

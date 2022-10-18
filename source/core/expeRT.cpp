@@ -24,6 +24,8 @@
 
 using namespace std;
 
+// -------------------------------------------------------------------------------------------- //
+
 expeRT::expeRT()
 {
     stt1 = stt = 0;
@@ -44,6 +46,8 @@ expeRT::expeRT()
 
     hyp = vaa = 0;
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 expeRT::~expeRT()
 {
@@ -84,6 +88,8 @@ expeRT::~expeRT()
     hyp = vaa = 0;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 inline dvector expeRT::vrange(int_t stt, int_t end)
 {
     dvector xx (end-stt+1);
@@ -99,6 +105,8 @@ inline dvector expeRT::vrange(int_t stt, int_t end)
     return xx;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 inline darray expeRT::arange(int_t stt, int_t end)
 {
     darray xx (end-stt+1);
@@ -113,6 +121,8 @@ inline darray expeRT::arange(int_t stt, int_t end)
 
     return xx;
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 status_t expeRT::ModelSurvivalFunction(Results *rPtr)
 {
@@ -254,6 +264,8 @@ status_t expeRT::ModelSurvivalFunction(Results *rPtr)
     return status;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 status_t expeRT::ModelSurvivalFunction(double_t &eValue, const int_t max1)
 {
     status_t status = SLM_SUCCESS;
@@ -378,6 +390,8 @@ status_t expeRT::ModelSurvivalFunction(double_t &eValue, const int_t max1)
 
     return status;
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 status_t expeRT::ModelTailFit(Results *rPtr)
 {
@@ -544,6 +558,8 @@ status_t expeRT::ModelTailFit(Results *rPtr)
     return status;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 status_t expeRT::ModelTailFit(double_t &eValue, const int_t max1)
 {
     status_t status = SLM_SUCCESS;
@@ -678,6 +694,8 @@ status_t expeRT::ModelTailFit(double_t &eValue, const int_t max1)
     return status;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 VOID expeRT::ResetPartialVectors()
 {
     /* Clear arrays, vectors, variables */
@@ -690,6 +708,8 @@ VOID expeRT::ResetPartialVectors()
     hyp = vaa = pN = 0;
 
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 std::array<short, 2> expeRT::StoreIResults(double *yy, int_t spec, int cpsms, ebuffer *ofs)
 {
@@ -731,6 +751,7 @@ std::array<short, 2> expeRT::StoreIResults(double *yy, int_t spec, int cpsms, eb
     return minnext;
 }
 
+// -------------------------------------------------------------------------------------------- //
 
 status_t expeRT::StoreIResults(Results *rPtr, int_t spec, ebuffer *ofs)
 {
@@ -774,6 +795,8 @@ status_t expeRT::StoreIResults(Results *rPtr, int_t spec, ebuffer *ofs)
     return status;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 status_t expeRT::Reconstruct(ebuffer *ebs, int_t specno, partRes *fR)
 {
     status_t status = SLM_SUCCESS;
@@ -802,6 +825,43 @@ status_t expeRT::Reconstruct(ebuffer *ebs, int_t specno, partRes *fR)
 
     return status;
 }
+
+// -------------------------------------------------------------------------------------------- //
+
+#if defined (USE_GPU) && defined (USE_MPI)
+
+status_t expeRT::Reconstruct(ebuffer *ebs, int_t specno, partRes *fR, double *target)
+{
+    status_t status = SLM_SUCCESS;
+
+    auto min  = fR->min;
+    auto max2 = fR->max2;
+
+    pN += fR->N;
+
+    char_t *buffer = ebs->ibuff + (specno * (Xsamples * 2));
+
+    for (auto jj = min; jj <= max2; jj++)
+    {
+        ushort_t *val = (ushort_t*) (buffer + (jj - min) * 2);
+
+        double_t val1 = (*val);
+
+        /* Decode from 65500 levels */
+        if (fR->N > 65500)
+        {
+            val1 = (val1/65500) * fR->N;
+        }
+
+        target[jj] = target[jj] + val1;
+    }
+
+    return status;
+}
+
+#endif // USE_GPU && USE_MPI
+
+// -------------------------------------------------------------------------------------------- //
 
 status_t expeRT::Model_logWeibull(Results *rPtr)
 {
@@ -935,6 +995,8 @@ status_t expeRT::Model_logWeibull(Results *rPtr)
     return status;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 status_t expeRT::AddlogWeibull(int_t N, double_t mu, double_t beta, int_t Min, int_t Max)
 {
     status_t status = 0;
@@ -998,7 +1060,11 @@ status_t expeRT::AddlogWeibull(int_t N, double_t mu, double_t beta, int_t Min, i
     return status;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 inline double_t expeRT::MeanSqError(const darray &y) { return (y * y).sum(); }
+
+// -------------------------------------------------------------------------------------------- //
 
 double_t expeRT::logWeibullFit(lwvector<double_t> *yy, int_t s, int_t e, int_t niter, double_t lr, double_t cutoff)
 {
@@ -1047,6 +1113,8 @@ double_t expeRT::logWeibullFit(lwvector<double_t> *yy, int_t s, int_t e, int_t n
     return curerr;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 inline VOID expeRT::logWeibullResponse(double_t mu, double_t beta, int_t st, int_t en)
 {
     // x = arange(st, en)
@@ -1062,6 +1130,8 @@ inline VOID expeRT::logWeibullResponse(double_t mu, double_t beta, int_t st, int
     }
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 inline darray expeRT::alogWeibullResponse(double_t mu, double_t beta, int_t st, int_t en)
 {
     darray xx = arange(st, en);
@@ -1072,6 +1142,8 @@ inline darray expeRT::alogWeibullResponse(double_t mu, double_t beta, int_t st, 
 
     return xx;
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 template <class T>
 inline int_t expeRT::rargmax(T &data, int_t i1, int_t i2, double_t value)
@@ -1090,6 +1162,8 @@ inline int_t expeRT::rargmax(T &data, int_t i1, int_t i2, double_t value)
     return rv;
 }
 
+// -------------------------------------------------------------------------------------------- //
+
 template <class T>
 inline int_t expeRT::argmax(T &data, int_t i1, int_t i2, double_t value)
 {
@@ -1106,6 +1180,8 @@ inline int_t expeRT::argmax(T &data, int_t i1, int_t i2, double_t value)
 
     return rv;
 }
+
+// -------------------------------------------------------------------------------------------- //
 
 template <class T>
 inline int_t expeRT::largmax(T &data, int_t i1, int_t i2, double_t value)

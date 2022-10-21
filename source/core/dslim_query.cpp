@@ -956,6 +956,9 @@ status_t DSLIM_QuerySpectrum(Queries<spectype_t> *ss, Index *index, uint_t idxch
                             /* hyperscore < 0 means either b- or y- ions were not matched */
                             if (cell.hyperscore > 0)
                             {
+                                if (cell.hyperscore >= MAX_HYPERSCORE)
+                                    cell.hyperscore = MAX_HYPERSCORE - 1;
+
                                 cell.idxoffset = ixx;
                                 cell.psid = it;
                                 cell.sharedions = shpk;

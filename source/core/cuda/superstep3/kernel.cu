@@ -865,6 +865,9 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
             // hyperscore < 0 means either b- or y- ions were not matched
             if (cell.hyperscore > 0)
             {
+                if (cell.hyperscore >= MAX_HYPERSCORE)
+                    cell.hyperscore = MAX_HYPERSCORE - 1;
+
                 cell.idxoffset = ixx;
                 cell.psid = it;
                 cell.sharedions = shpk;

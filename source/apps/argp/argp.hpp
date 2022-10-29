@@ -300,7 +300,7 @@ void getParams(gParams &params)
         params.min_cpsm = parser.hits;
 
         // Base Intensity x 1000
-        params.base_int = parser.base_int * 1000;
+        params.base_int = parser.base_int * YAXISMULTIPLIER;
 
         // Cutoff intensity ratio (add 0.5 for nearest rounding)
         params.min_int = static_cast<double_t>(params.base_int) * parser.cutoff + 0.5;

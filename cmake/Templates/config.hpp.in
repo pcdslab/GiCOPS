@@ -67,6 +67,9 @@
 // number of X-axis samples in the histogram
 #define Xsamples                128
 
+// y-axis multiplier for experimental spectra data
+#define YAXISMULTIPLIER         100
+
 // FUTURE:  Only b- and y-ions used in current implementation
 
 // Define the Ion Series and add it to iSERIES

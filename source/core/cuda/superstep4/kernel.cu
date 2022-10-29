@@ -533,18 +533,18 @@ __host__ status_t processResults(Index *index, Queries<spectype_t> *gWorkPtr, in
     auto TailFit_ptr = static_cast<void (*)(double *, int *, dhCell *, double *, short)>(&TailFit);
 
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the TailFit kernel
-    cudaFuncSetAttribute(*TailFit_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(32));
+    cudaFuncSetAttribute(*TailFit_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(24));
 
     // the tailfit kernel
-    hcp::gpu::cuda::s4::TailFit<<<numSpecs, blockSize, KBYTES(32), driver->get_stream(SEARCH_STREAM)>>>(d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, d_evalues, (short)params.min_cpsm);
+    hcp::gpu::cuda::s4::TailFit<<<numSpecs, blockSize, KBYTES(24), driver->get_stream(SEARCH_STREAM)>>>(d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, d_evalues, (short)params.min_cpsm);
 
 #else
 
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the logWeibullfit kernel
-    //cudaFuncSetAttribute(logWeibullFit, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(32));
+    //cudaFuncSetAttribute(logWeibullFit, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(24));
 
     // the logWeibullfit kernel
-    //hcp::gpu::cuda::s4::logWeibullFit<<<numSpecs, blockSize, KBYTES(32), driver->get_stream(SEARCH_STREAM)>>>(d_Scores, d_evalues, min_cpsm);
+    //hcp::gpu::cuda::s4::logWeibullFit<<<numSpecs, blockSize, KBYTES(24), driver->get_stream(SEARCH_STREAM)>>>(d_Scores, d_evalues, min_cpsm);
 
 #endif // TAILFIT
 
@@ -777,16 +777,16 @@ __host__ void processResults(double *h_data, float *h_hyp, int *h_cpsms, double 
     auto TailFit_ptr = static_cast<void (*)(double *, float *, int *, double *, short)>(&TailFit);
 
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the TailFit kernel
-    cudaFuncSetAttribute(*TailFit_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(32));
+    cudaFuncSetAttribute(*TailFit_ptr, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(24));
 
     // the tailfit kernel
-    hcp::gpu::cuda::s4::TailFit<<<bsize, blockSize, KBYTES(32), driver->get_stream()>>>(d_data, d_hyp, d_cpsms, d_evalues, (short)params.min_cpsm);
+    hcp::gpu::cuda::s4::TailFit<<<bsize, blockSize, KBYTES(24), driver->get_stream()>>>(d_data, d_hyp, d_cpsms, d_evalues, (short)params.min_cpsm);
 #else
     // IMPORTANT: make sure at least 32KB+ shared memory is available to the logWeibullfit kernel
-    //cudaFuncSetAttribute(logWeibullFit, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(32));
+    //cudaFuncSetAttribute(logWeibullFit, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(24));
 
     // the logWeibullfit kernel
-    //hcp::gpu::cuda::s4::logWeibullFit<<<numSpecs, blockSize, KBYTES(32), driver->get_stream(SEARCH_STREAM)>>>(d_Scores, d_evalues, min_cpsm);
+    //hcp::gpu::cuda::s4::logWeibullFit<<<numSpecs, blockSize, KBYTES(24), driver->get_stream(SEARCH_STREAM)>>>(d_Scores, d_evalues, min_cpsm);
 #endif // TAILFIT
 
     // D2H

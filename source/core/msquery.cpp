@@ -286,7 +286,7 @@ std::array<int, 2> MSQuery::convertAndprepMS2bin(string *filename)
                 if constexpr (std::is_same<int, spectype_t>::value)
                 {
                     mzs.push_back(std::move(std::atof(mz.c_str()) * params.scale));
-                    intns.push_back(std::move(std::atof(intn.c_str()) * 1000));
+                    intns.push_back(std::move(std::atof(intn.c_str()) * YAXISMULTIPLIER));
                 }
                 else
                 {
@@ -920,7 +920,7 @@ VOID MSQuery::readMS2spectrum()
                 }
 
                 spectrum.mz[speclen] = (uint_t)((double_t)std::atof(mz.c_str()) * params.scale);
-                spectrum.intn[speclen] = (uint_t)((double_t)std::atof(intn.c_str()) * 1000);
+                spectrum.intn[speclen] = (uint_t)((double_t)std::atof(intn.c_str()) * YAXISMULTIPLIER);
 
                 speclen++;
             }
@@ -1015,7 +1015,7 @@ VOID MSQuery::readMS2spectrum()
                 }
 
                 spectrum.mz[speclen] = (uint_t)((double_t)std::atof(mz.c_str()) * params.scale);
-                spectrum.intn[speclen] = (uint_t)((double_t)std::atof(intn.c_str()) * 1000);
+                spectrum.intn[speclen] = (uint_t)((double_t)std::atof(intn.c_str()) * YAXISMULTIPLIER);
 
                 speclen++;
             }

@@ -388,6 +388,13 @@ void parseAndgetParams(int argc, char *argv[], gParams &params)
 {
     auto parser = get_instance(argc, argv);
 
+    // print help if no arguments provided
+    if (argc < 2)
+    {
+        parser.help();
+        exit(0);
+    }
+
     if (parser.verbose)
         parser.print();
 

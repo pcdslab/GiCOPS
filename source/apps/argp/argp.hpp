@@ -183,7 +183,7 @@ struct params_t : public argparse::Args
                                          = kwarg("m,mods", "list of variable post-translational modifications (PTMs)").multi_argument();
 
     // do not keep the full database index on GPU
-    bool &nogpuindex                     = flag("ngi,nogpuindex", "GiCOPS: do not keep full database index on GPU (default: true)");
+    bool &nogpuindex                     = flag("ngi,nogpuindex", "GiCOPS: do not keep full database index on GPU");
 
     // re-index MS/MS data and create and index
     bool &reindex                        = flag("reindex", "rebuild/update the MS/MS dataset index");

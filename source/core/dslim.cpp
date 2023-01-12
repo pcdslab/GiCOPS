@@ -780,8 +780,11 @@ status_t DSLIM_DeallocateSC()
     {
         for (uint_t thd = 0; thd < params.threads; thd++)
         {
-            delete[] Score[thd].byc;
-            delete[] Score[thd].res.survival;
+            if (Score[thd].byc)
+                delete[] Score[thd].byc;
+
+            if (Score[thd].res.survival)
+                delete[] Score[thd].res.survival;
 
             Score[thd].byc = NULL;
             Score[thd].res.survival = NULL;

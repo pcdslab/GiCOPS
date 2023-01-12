@@ -291,8 +291,8 @@ struct BYC
 {
     short_t      bc; // b ion count
     short_t      yc; // y ion count
-    long_t      ibc; // b ion intensities
-    long_t      iyc; // y ion intensities
+    uint_t      ibc; // b ion intensities
+    uint_t      iyc; // y ion intensities
 };
 
 struct DSLIM_Matrix

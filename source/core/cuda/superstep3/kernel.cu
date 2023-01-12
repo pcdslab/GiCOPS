@@ -118,10 +118,10 @@ template <typename T>
 extern __device__ void blockSum(T val, T &sum);
 
 template <typename T>
-__device__ T * upper_bound(T *start, const int n, T target);
+extern __device__ T * upper_bound(T *start, const int n, T target);
 
 template <typename T>
-__device__ T * lower_bound(T *start, const int n, T target);
+extern __device__ T * lower_bound(T *start, const int n, T target);
 
 
 // -------------------------------------------------------------------------------------------- //
@@ -580,19 +580,28 @@ __host__ status_t SearchKernel(spmat_t *mat, Queries<spectype_t> *gWorkPtr, int 
     auto d_BYC = std::get<0>(pBYC);
     auto maxchunk = std::get<1>(pBYC);
 
-    // set the shared memory to 48KB
-    cudaFuncSetAttribute(SpSpGEMM, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(48));
+    // block size is 512 for open-search
+    int blocksize = 512;
+
+    // set block size to 320 for closed-search
+    if (params.dM < 50)
+        blocksize = 320;
+
+    // calculate shmembytes needed
+    int shmembytes = std::max((unsigned long)HISTOGRAM_SIZE, (sizeof(BYC) + sizeof(double)) * blocksize);
+
+    // set the shared memory to 16KB
+    cudaFuncSetAttribute(SpSpGEMM, cudaFuncAttributeMaxDynamicSharedMemorySize, KBYTES(16));
 
     for (int iter = 0 ; iter < niters ; iter++)
     {
         int nblocks = itersize;
-        const int blocksize = 320; // block size of 256 or 320 are good for better load factor 
 
         // if last iteration, adjust the number of blocks
         if (iter == niters - 1)
             nblocks = nspectra - iter * itersize;
 
-        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, KBYTES(32), driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter * itersize, d_BYC, maxchunk, d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
+        hcp::gpu::cuda::s3::SpSpGEMM<<<nblocks, blocksize, shmembytes, driver->stream[SEARCH_STREAM]>>>(d_WorkPtr->moz, d_WorkPtr->intensity, d_WorkPtr->idx, d_WorkPtr->minlimits, d_WorkPtr->maxlimits, d_bA, d_iA, iter * itersize, d_BYC, maxchunk, d_Scores->survival, d_Scores->cpsms, d_Scores->topscore, params.dF, speclen, params.max_mass, params.scale, params.min_shp, ixx);
 
         // synchronize the stream
         driver->stream_sync(SEARCH_STREAM);
@@ -721,26 +730,19 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
                 {
                     uint_t raw = d_iA[ion];
 
-                    /* Calculate parent peptide ID */
-                    int_t ppid = (raw / speclen);
+                    /* Calculate the residue (raw % speclen) and isY */
+                    short isY = (((raw % speclen)) / halfspeclen);
 
-                    /* Calculate the residue */
-                    int_t residue = (raw % speclen);
-
-                    /* Either 0 or 1 */
-                    int isY = residue / halfspeclen;
-                    int isB = 1 - isY;
-
-                    // key - ppid
-                    myKey = ppid;
+                    // key = parent peptide ID
+                    myKey = (raw / speclen);
 
                     // write to keys
                     keys[threadIdx.x] = myKey;
 
                     /* Get the map element */
                     myVal = &vals[threadIdx.x];
-                    myVal->bc = isB;
-                    myVal->ibc = intn * isB;
+                    myVal->bc = (1 - isY);
+                    myVal->ibc = intn * (1 - isY);
                     myVal->yc = isY;
                     myVal->iyc = intn * isY;
                 }
@@ -755,7 +757,7 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
                 // number of active threads
                 int activethds = min(blockDim.x, ends - ion + threadIdx.x + 1);
 
-                int iters = hcp::gpu::cuda::s1::log2ceil(activethds);
+                short iters = hcp::gpu::cuda::s1::log2ceil(activethds);
 
                 // is this thread a part of a localized group (and not group leader)
                 bool isGroup = false;
@@ -853,34 +855,28 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
         // filter by the min shared peaks
         if (shpk >= min_shp) 
         {
-            // Create a heap cell
-            dhCell cell;
-
             // get the precomputed log(factorial(x))
-            double_t h1 = d_lgFact[bcc] + d_lgFact[ycc];
 
-            // Fill in the information
-            cell.hyperscore = h1 + log10f(1 + bycPtr[it].ibc) + log10f(1 + bycPtr[it].iyc) - 6;
+            double_t hyperscore = d_lgFact[bcc] + d_lgFact[ycc] + log10f(1 + bycPtr[it].ibc) + log10f(1 + bycPtr[it].iyc) - 4;
 
             // hyperscore < 0 means either b- or y- ions were not matched
-            if (cell.hyperscore > 0)
+            if (hyperscore > 0)
             {
-                cell.idxoffset = ixx;
-                cell.psid = it;
-                cell.sharedions = shpk;
+                if (hyperscore >= MAX_HYPERSCORE)
+                    hyperscore = MAX_HYPERSCORE - 1;
 
                 // increment local candidate psms by +1
                 cpss +=1;
 
                 // Update the histogram
-                atomicAdd(&histogram[(int)(cell.hyperscore * 10 + 0.5)], 1);
+                atomicAdd(&histogram[(int)(hyperscore * 10 + 0.5)], 1);
 
-                if (cell.hyperscore > topscores.hyperscore)
+                if (hyperscore > topscores.hyperscore)
                 {
-                    topscores.hyperscore = cell.hyperscore;
-                    topscores.psid       = cell.psid;
-                    topscores.idxoffset  = cell.idxoffset;
-                    topscores.sharedions = cell.sharedions;
+                    topscores.hyperscore = hyperscore;
+                    topscores.psid       = it;
+                    topscores.idxoffset  = ixx;
+                    topscores.sharedions = shpk;
                 }
             }
         }
@@ -905,23 +901,23 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
     }
 
     // local candidate psms
-    int cpsms_loc = 0;
+    int l_cpsms = 0;
 
     // sum the local cpsms to get the count
-    hcp::gpu::cuda::s3::blockSum(cpss, cpsms_loc);
+    hcp::gpu::cuda::s3::blockSum(cpss, l_cpsms);
 
     // add to the global memory sum
     if (!threadIdx.x)
-        *cpsms = *cpsms + cpsms_loc;
+        *cpsms = *cpsms + l_cpsms;
 
-    // need this to avoid race conditions. Why?
+    // need this to avoid race conditions
     __syncthreads();
 
     // copy histogram to the global memory
     for (int ii = threadIdx.x; ii < HISTOGRAM_SIZE; ii+=blockDim.x)
         survival[ii] += histogram[ii];
 
-    // need this to avoid race conditions. Why?
+    // need this to avoid race conditions
     __syncthreads();
 
     // reset the bycPtr

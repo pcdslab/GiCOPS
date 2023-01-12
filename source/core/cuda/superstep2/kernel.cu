@@ -580,7 +580,7 @@ std::array<int, 2> readAndPreprocess(string_t &filename)
                 if constexpr (std::is_same<int, spectype_t>::value)
                 {
                     mzs[m_idx] = std::atof(mz.c_str()) * params.scale;
-                    intns[m_idx] = std::atof(intn.c_str()) * 1000;
+                    intns[m_idx] = std::atof(intn.c_str()) * YAXISMULTIPLIER;
                 }
                 else
                 {

@@ -183,7 +183,7 @@ struct params_t : public argparse::Args
                                          = kwarg("m,mods", "list of variable post-translational modifications (PTMs)").multi_argument();
 
     // do not keep the full database index on GPU
-    bool &nogpuindex                     = flag("ngi,nogpuindex", "GiCOPS: do not keep full database index on GPU (default: true)");
+    bool &nogpuindex                     = flag("ngi,nogpuindex", "GiCOPS: do not keep full database index on GPU");
 
     // re-index MS/MS data and create and index
     bool &reindex                        = flag("reindex", "rebuild/update the MS/MS dataset index");
@@ -300,7 +300,7 @@ void getParams(gParams &params)
         params.min_cpsm = parser.hits;
 
         // Base Intensity x 1000
-        params.base_int = parser.base_int * 1000;
+        params.base_int = parser.base_int * YAXISMULTIPLIER;
 
         // Cutoff intensity ratio (add 0.5 for nearest rounding)
         params.min_int = static_cast<double_t>(params.base_int) * parser.cutoff + 0.5;
@@ -387,6 +387,13 @@ void getParams(gParams &params)
 void parseAndgetParams(int argc, char *argv[], gParams &params)
 {
     auto parser = get_instance(argc, argv);
+
+    // print help if no arguments provided
+    if (argc < 2)
+    {
+        parser.help();
+        exit(0);
+    }
 
     if (parser.verbose)
         parser.print();

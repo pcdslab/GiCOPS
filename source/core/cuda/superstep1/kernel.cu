@@ -730,9 +730,6 @@ __global__ void GenerateFragIonData(uint_t *d_fragIon, pepEntry *d_pepEntry, cha
             Spectrum[idx] = (myVal + PROTONS(myCharge)) * scale / myCharge;
         }
     }
-
-    // do we need this?
-    // __syncthreads();
 }
 
 // -------------------------------------------------------------------------------------------- //

@@ -30,7 +30,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE BOOL "Build position independent co
 
 # Set a default build type if none was specified
 set(HiCOPS_BUILD_TYPE "RelWithDebInfo")
- 
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "Setting build type to '${HiCOPS_BUILD_TYPE}' as none was specified.")
     set(CMAKE_BUILD_TYPE "${HiCOPS_BUILD_TYPE}" CACHE
@@ -84,8 +84,11 @@ if(OpenMP_FOUND)
 
 endif()
 
-if (USE_MPI)
+if (USE_MPI AND NOT USE_GPU)
     find_package(MPI)
+else()
+    message(WARNING "USE_MPI and USE_GPU not fully supported together due to filesystem support.")
+    message(STATUS "=> Setting USE_MPI=OFF")
 endif()
 
 if(MPI_FOUND AND USE_MPI)
@@ -144,7 +147,7 @@ endif()
 # Find timemory-mpip.so library if required
 if (USE_MPIP_LIBRARY)
     find_library(MPIP_LIBRARY
-                 NAMES timemory-mpip 
+                 NAMES timemory-mpip
                  HINTS ENV PATH
                        ENV LD_LIBRARY_PATH
                        ENV CMAKE_PREFIX_PATH

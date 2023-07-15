@@ -297,7 +297,7 @@ struct BYC
 
 struct DSLIM_Matrix
 {
-    uint_t    *iA; // Ions Array (iA)  
+    uint_t    *iA; // Ions Array (iA)
     uint_t    *bA; // Bucket Array (bA)
 
     DSLIM_Matrix()
@@ -440,10 +440,13 @@ enum FileType_t {
             this->gputhreads = 0;
 #else
         if (_useGPU)
-            std::cout << "ERROR: Build with USE_GPU=ON to enable GPU." << std::endl;
+            std::cerr << "WARNING: Build with USE_GPU=ON to enable GPU support" << std::endl;
 
         this->useGPU = false;
         this->gputhreads = 0;
+
+        std::cout << "STATUS: Setting useGPU = " << std::boolalpha << this->useGPU << std::endl;
+
 #endif // USE_GPU
     }
 
@@ -708,7 +711,7 @@ typedef struct _heapEntry
     _heapEntry& operator=(const _heapEntry& rhs)
     {
         /* Check for self assignment */
-        if (this != &rhs) 
+        if (this != &rhs)
             memcpy(this, &rhs, sizeof(_heapEntry));
 
         return *this;

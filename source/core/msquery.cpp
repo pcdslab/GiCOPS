@@ -603,6 +603,20 @@ bool MSQuery::init_index(const std::vector<string_t> &queryfiles)
     // check if file exists
     bool exists = !params.reindex && fileexists(fname) && verifypbinfiles();
 
+#if defined (USE_MPI)
+    if (!params.useGPU)
+    {
+        // create a MPI data type
+        MPI_Type_contiguous((int_t)(sizeof(info_t) / sizeof(uint_t)),
+                            MPI_UNSIGNED,
+                            &MPI_info);
+
+        MPI_Type_commit(&MPI_info);
+
+        // make sure all processes have the same file
+        hcp::mpi::barrier();
+    }
+#endif // USE_MPI
 
     // if the file does not exist, create it
     if (!exists)
@@ -612,18 +626,8 @@ bool MSQuery::init_index(const std::vector<string_t> &queryfiles)
 
 #if defined (USE_MPI)
 
-        if (!params.useGPU)
+        if ( !params.useGPU)
         {
-            // create a MPI data type
-            MPI_Type_contiguous((int_t)(sizeof(info_t) / sizeof(int_t)),
-                            MPI_INT,
-                            &MPI_info);
-
-            MPI_Type_commit(&MPI_info);
-
-            // make sure all processes have the same file
-            hcp::mpi::barrier();
-
             // open the file as ofstream file
             status_t err = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), (MPI_MODE_CREATE | MPI_MODE_WRONLY), MPI_INFO_NULL, &mpi_fh);
             return exists;
@@ -669,6 +673,7 @@ status_t MSQuery::read_index(info_t *findex, int_t count)
     // file name
     string_t fname = params.datapath + "/summary.dbprep";
     status_t status = SLM_SUCCESS;
+
 #if defined(USE_MPI)
 
     if (!params.useGPU)
@@ -679,7 +684,7 @@ status_t MSQuery::read_index(info_t *findex, int_t count)
         status = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh2);
 
         // read the index
-        status = MPI_File_read_all(fh2, findex, count, MPI_info, MPI_STATUS_IGNORE);
+        status = MPI_File_read_at_all(fh2, 0, findex, count, MPI_info, MPI_STATUS_IGNORE);
 
         // close the file
         return MPI_File_close(&fh2);

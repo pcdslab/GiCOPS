@@ -56,7 +56,11 @@ status_t DSLIM_Construct(Index *index)
     uint_t scale = params.scale;
 
     // allocate memory to temporarily store the fragment ion data
-    if (status == SLM_SUCCESS && SpecArr == NULL && !params.useGPU)
+    if (status == SLM_SUCCESS && SpecArr == NULL
+#if defined (USE_GPU)
+    && !params.useGPU
+#endif
+)
     {
         /* Spectra Array (SA) */
         SpecArr = new uint_t[MAX_IONS];
@@ -130,8 +134,8 @@ status_t DSLIM_Construct(Index *index)
 
             /* Check if all correctly done */
             if (bAPtr[(int_t)(maxmass * scale)] != (csize * speclen))
-            {	
-                status = ERR_INVLD_SIZE;	
+            {
+                status = ERR_INVLD_SIZE;
             }
 
             assert (bAPtr[(int_t)(maxmass * scale)] == (csize * speclen));

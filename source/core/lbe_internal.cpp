@@ -190,7 +190,7 @@ status_t LBE_Initialize(Index *index)
         }
     }
 
-    // 
+    //
     // MAYBE: Soft remove invalid peptides
     // Will need to call LBE_Distribute and/or LBE_CreatePartitions again
     //
@@ -408,6 +408,15 @@ status_t LBE_CountPeps(string &filename, Index *index, uint_t explen)
     index->pepCount = 0;
     index->modCount = 0;
 
+    // handle this malicious anomaly here.
+#if !defined(USE_GPU)
+    if (params.useGPU)
+    {
+        std::cerr << "ABORT: GiCOPS compiled without GPU support. Please re-run CMake with -DUSE_GPU=ON" << std::endl;
+        exit(-1);
+    }
+#endif
+
     // print current progress
     printProgress(Database Indexing);
 
@@ -469,7 +478,7 @@ status_t LBE_CountPeps(string &filename, Index *index, uint_t explen)
     if (index->modCount == (uint_t)(-1) || index->pepIndex.AAs != index->pepCount * explen)
         status = ERR_INVLD_SIZE;
 
-    // Print if everything is okay 
+    // Print if everything is okay
     if (status == SLM_SUCCESS)
     {
         // Return the total count

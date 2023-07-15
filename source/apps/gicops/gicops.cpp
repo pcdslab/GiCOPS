@@ -62,7 +62,7 @@ status_t main(int_t argc, char_t* argv[])
     auto env_tool = tim::get_env<std::string>("HICOPS_INST_COMPONENTS", "");
     auto env_enum = tim::enumerate_components(tim::delimit(env_tool));
     env_enum.erase(std::remove_if(env_enum.begin(), env_enum.end(),
-                                  [](int c) { return c == WALL_CLOCK || 
+                                  [](int c) { return c == WALL_CLOCK ||
                                                      c == CPU_UTIL; }),
                                   env_enum.end());
 
@@ -304,7 +304,7 @@ status_t main(int_t argc, char_t* argv[])
     mem_tuple_t  search_mem_inst("search");
 #endif // USE_TIMEMORY
 
-    // Perform the distributed database search 
+    // Perform the distributed database search
     if (status == SLM_SUCCESS)
     {
         MARK_START(dslim_search);

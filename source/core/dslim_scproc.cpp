@@ -109,13 +109,19 @@ status_t DSLIM_DistScoreManager()
 #endif // USE_TIMEMORY
 
             // use GPU if available
-#if defined (USE_GPU)
             if (params.useGPU)
+            {
+#if defined (USE_GPU)
+                static bool once = [](){ std::cout << "WARNING: Experimental support for GPU+MPI only. Problems expected." << std::endl; return true;}();
                 status = ScoreHandle->GPUCombineResults();
-            else
 #else
-            status = ScoreHandle->CombineResults();
+                // should never logically reach here unless maliciously hacked into.
+                std::cerr << "ABORT: params.useGPU=true not available. Build with -DUSE_GPU=ON." << std::endl;
+                exit(-1);
 #endif // USE_GPU
+            }
+            else
+                status = ScoreHandle->CombineResults();
 
 #if defined (USE_TIMEMORY)
             merge_instr.stop();

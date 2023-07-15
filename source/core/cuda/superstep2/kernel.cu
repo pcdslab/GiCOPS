@@ -45,7 +45,7 @@ const int BATCHSIZE = 20000;
 
 // -------------------------------------------------------------------------------------------- //
 
-namespace hcp 
+namespace hcp
 {
 
 namespace gpu
@@ -288,10 +288,10 @@ status_t ArraySort(spectype_t *intns, spectype_t *mzs, int *lens, int &idx, int 
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_lens, lens, count, driver->stream[2]));
 
     // memory for arraynums
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_arraynums, rawsize, driver->stream[2])); 
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_arraynums, rawsize, driver->stream[2]));
 
     // memory for indices
-    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_indices, rawsize, driver->stream[3])); 
+    hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_indices, rawsize, driver->stream[3]));
 
     // memory for processed intensities
     hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_allocate_async(d_m_intns, QALEN * BATCHSIZE, driver->stream[3]));
@@ -500,7 +500,7 @@ std::array<int, 2> readAndPreprocess(string_t &filename)
 
                         // flush to the binary file
                         MSQuery::flushBinaryFile(&filename, m_mzs, m_intns, rtimes, prec_mz, z, lens, count);
-                        
+
                         count = 0;
                         m_idx = 0;
                         largestspec_loc = 0;

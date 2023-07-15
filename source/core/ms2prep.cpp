@@ -74,7 +74,7 @@ status_t synchronize()
 
 //
 // FUNCTION: get_instance
-// 
+//
 MSQuery **& get_instance()
 {
     static MSQuery** ptrs = new MSQuery*[queryfiles.size()];
@@ -83,7 +83,7 @@ MSQuery **& get_instance()
 
 //
 // FUNCTION: initialize
-// 
+//
 status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
 {
     status_t status = SLM_SUCCESS;
@@ -126,7 +126,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
             ms2local[0] = params.myid;
 
             // rest of the files in cyclic order
-            std::generate(std::begin(ms2local) + 1, std::end(ms2local), 
+            std::generate(std::begin(ms2local) + 1, std::end(ms2local),
                           [n=params.myid] () mutable { return n += params.nodes; });
 
 #if defined(USE_GPU)
@@ -143,7 +143,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
 
             //
             // lambda function to initialize the MSQuery instances
-            // 
+            //
             auto workerthread = [&](bool gpu)
             {
                 auto loc_fid = 0;
@@ -175,7 +175,7 @@ status_t initialize(lwqueue<MSQuery *>** qfPtrs, int_t& nBatches, int_t& dssize)
                         hcp::gpu::cuda::s2::preprocess(ptrs[loc_fid], queryfiles[loc_fid], loc_fid);
                     else
                         ptrs[loc_fid]->initialize(&queryfiles[loc_fid], loc_fid);
-                
+
                 // archive the index if using MPI
 #ifdef USE_MPI
                     ptrs[loc_fid]->archive(loc_fid);

@@ -27,18 +27,16 @@ using namespace std;
 
 extern gParams params;
 
-#ifdef USE_MPI
+#if defined(USE_MPI)
 // MPI datatype for info_t
 MPI_Datatype MPI_info;
 // handle for summary.dbprep file
-MPI_File fh;
-
-#else
-// handle for summary.dbprep file
-std::ofstream *fh;
+MPI_File mpi_fh;
 
 #endif // USE_MPI
 
+// handle for summary.dbprep file
+std::ofstream *fh;
 
 MSQuery::MSQuery()
 {
@@ -371,7 +369,7 @@ status_t MSQuery::pickpeaks(std::vector<T> &mzs, std::vector<T> &intns, int &spe
             if (intns[j] >= l_min_int)
                 newspeclen++;
             // since sorted in ascending order. TODO: Check if this is correct
-            else 
+            else
                 break;
         }
 #else
@@ -550,7 +548,7 @@ bool MSQuery::init_index(const std::vector<string_t> &queryfiles)
     // function to check if a file exists
     auto fileexists = [](const string_t &fname) -> bool
     {
-    // COMPILER VERSION GCC 9.1.0+ required 
+    // COMPILER VERSION GCC 9.1.0+ required
 #if __GNUC__ > 9 || (__GNUC__ == 9 && (__GNUC_MINOR__ >= 1))
         // COMPILER VERSION GCC 9.1.0+ required for std::filesystem calls
         auto ret = std::filesystem::exists(fname);
@@ -612,22 +610,25 @@ bool MSQuery::init_index(const std::vector<string_t> &queryfiles)
         // set reindex = true
         params.reindex = true;
 
-#ifdef USE_MPI
+#if defined (USE_MPI)
 
-        // create a MPI data type
-        MPI_Type_contiguous((int_t)(sizeof(info_t) / sizeof(int_t)),
+        if (!params.useGPU)
+        {
+            // create a MPI data type
+            MPI_Type_contiguous((int_t)(sizeof(info_t) / sizeof(int_t)),
                             MPI_INT,
                             &MPI_info);
 
-        MPI_Type_commit(&MPI_info);
+            MPI_Type_commit(&MPI_info);
 
-        // make sure all processes have the same file
-        hcp::mpi::barrier();
+            // make sure all processes have the same file
+            hcp::mpi::barrier();
 
-        // open the file as ofstream file
-        status_t err = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), (MPI_MODE_CREATE | MPI_MODE_WRONLY), MPI_INFO_NULL, &fh);
-
-#else
+            // open the file as ofstream file
+            status_t err = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), (MPI_MODE_CREATE | MPI_MODE_WRONLY), MPI_INFO_NULL, &mpi_fh);
+            return exists;
+        }
+#endif // USE_MPI
 
         fh = new ofstream;
         fh->open(fname, ios::out | ios::binary);
@@ -639,7 +640,6 @@ bool MSQuery::init_index(const std::vector<string_t> &queryfiles)
             exit (-1);
         }
 
-#endif // USE_MPI
     }
 
     return exists;
@@ -648,9 +648,11 @@ bool MSQuery::init_index(const std::vector<string_t> &queryfiles)
 status_t MSQuery::write_index()
 {
 #ifdef USE_MPI
-    return MPI_File_close(&fh);
-#else
-
+    if (!params.useGPU)
+    {
+        return MPI_File_close(&mpi_fh);
+    }
+#endif // USE_MPI
     if (fh && fh->is_open())
     {
         fh->close();
@@ -660,31 +662,31 @@ status_t MSQuery::write_index()
     }
 
     return SLM_SUCCESS;
-
-#endif // USE_MPI
 }
 
 status_t MSQuery::read_index(info_t *findex, int_t count)
 {
     // file name
-    string fname = params.datapath + "/summary.dbprep";
+    string_t fname = params.datapath + "/summary.dbprep";
+    status_t status = SLM_SUCCESS;
+#if defined(USE_MPI)
 
-#ifdef USE_MPI
-    MPI_File fh2;
+    if (!params.useGPU)
+    {
+        MPI_File fh2;
 
-    // open the file
-    status_t status = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh2);
+        // open the file
+        status = MPI_File_open(MPI_COMM_WORLD, fname.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &fh2);
 
-    // read the index
-    status = MPI_File_read_all(fh2, findex, count, MPI_info, MPI_STATUS_IGNORE);
+        // read the index
+        status = MPI_File_read_all(fh2, findex, count, MPI_info, MPI_STATUS_IGNORE);
 
-    // close the file
-    MPI_File_close(&fh2);
-#else
+        // close the file
+        return MPI_File_close(&fh2);
+    }
+#endif // USE_MPI
 
     std::ifstream fh2(fname, ios::in | ios::binary);
-
-    status_t status = SLM_SUCCESS;
 
     if (fh2.is_open())
     {
@@ -694,22 +696,23 @@ status_t MSQuery::read_index(info_t *findex, int_t count)
     else
         status = ERR_FILE_NOT_FOUND;
 
-#endif // USE_MPI
-
     return status;
 }
 
 status_t MSQuery::archive(int_t index)
 {
-#ifdef USE_MPI
-    return MPI_File_write_at(fh, sizeof(info_t)*(index), &info, 1, MPI_info, MPI_STATUS_IGNORE); 
-#else
+    status_t status = SLM_SUCCESS;
+
+#if defined (USE_MPI)
+
+    if (!params.useGPU)
+        return MPI_File_write_at(mpi_fh, sizeof(info_t)*(index), &info, 1, MPI_info, MPI_STATUS_IGNORE);
+#endif // USE_MPI
 
     // fh advances with every write/read
     fh->write((char_t *)&info, sizeof(info_t));
 
-    return SLM_SUCCESS;
-#endif // USE_MPI
+    return status;
 }
 
 template <typename T>
@@ -815,7 +818,7 @@ void MSQuery::readBINbatch(int startspec, int endspec, Queries<T> *expSpecs)
 
             ind += clen;
             lens[i+1] = lens[i] + clen;
-            
+
         }
     }
 

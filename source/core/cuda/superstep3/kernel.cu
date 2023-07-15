@@ -66,7 +66,7 @@ extern gParams params;
 
 // -------------------------------------------------------------------------------------------- //
 
-namespace hcp 
+namespace hcp
 {
 
 namespace gpu
@@ -95,8 +95,8 @@ namespace s3
 
 // -------------------------------------------------------------------------------------------- //
 
-__global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *dQ_idx, int *dQ_minlimits, int *dQ_maxlimits, 
-                        uint_t* d_bA, uint_t *d_iA, int iter, BYC *bycP, int maxchunk, double *d_survival, int *d_cpsms, 
+__global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *dQ_idx, int *dQ_minlimits, int *dQ_maxlimits,
+                        uint_t* d_bA, uint_t *d_iA, int iter, BYC *bycP, int maxchunk, double *d_survival, int *d_cpsms,
                         dhCell *d_topscore, int dF, int speclen, int maxmass, int scale, short min_shp, int ixx);
 
 // database search kernel host wrapper
@@ -193,7 +193,7 @@ void dQueries<T>::H2D(Queries<T> *rhs)
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
     int chunksize = rhs->numSpecs;
-    
+
     this->numSpecs = rhs->numSpecs;
     this->numPeaks = rhs->numPeaks;
 
@@ -254,7 +254,7 @@ __host__ status_t initialize()
     static auto h_lgfact = hcp::utils::lgfact<hcp::utils::maxshp>();
 
     // copy to CUDA constant arrays
-    hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(d_lgFact, &h_lgfact.val, sizeof(double_t) * hcp::utils::maxshp)); 
+    hcp::gpu::cuda::error_check(cudaMemcpyToSymbol(d_lgFact, &h_lgfact.val, sizeof(double_t) * hcp::utils::maxshp));
 
     return SLM_SUCCESS;
 
@@ -317,7 +317,7 @@ std::pair<BYC *, int>& getBYC(int chunksize)
 void freeBYC()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
-    
+
     auto pBYC = getBYC();
 
     auto d_BYC = std::get<0>(pBYC);
@@ -354,7 +354,7 @@ dScores *& getScorecard()
 void freeScorecard()
 {
     auto driver = hcp::gpu::cuda::driver::get_instance();
-    
+
     auto&& d_Scores = getScorecard();
 
     if (d_Scores)
@@ -369,7 +369,7 @@ void freeScorecard()
 __host__ dQueries<spectype_t> *& getdQueries()
 {
     static thread_local dQueries<spectype_t> *dqueries = nullptr;
-    
+
     if (!dqueries)
         dqueries = new dQueries<spectype_t>();
 
@@ -405,7 +405,7 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
     static thread_local auto driver = hcp::gpu::cuda::driver::get_instance();
 
     dIndex *d_Index = nullptr;
-    
+
     if (params.gpuindex)
         d_Index = hcp::gpu::cuda::s1::getdIndex(index);
 
@@ -460,7 +460,7 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
                     hcp::gpu::cuda::error_check(hcp::gpu::cuda::H2D(d_mat->iA, iAPtr, iAsize, driver->stream[DATA_STREAM]));
                 }
 
-                // copy the At rows to device 
+                // copy the At rows to device
                 d_mat->bA = hcp::gpu::cuda::s1::getbA();
                 uint_t bAsize = ((uint_t)(params.max_mass * params.scale)) + 1;
 
@@ -480,15 +480,19 @@ __host__ status_t search(Queries<spectype_t> *gWorkPtr, Index *index, uint_t idx
         }
     }
 
-#ifdef USE_MPI
-
     if (params.nodes > 1)
+    {
+#if defined (USE_MPI)
+        static bool once = [](){ std::cout << "WARNING: Experimental support for GPU+MPI only. Problems expected." << std::endl; return true;}();
         status = hcp::gpu::cuda::s4::getIResults(index, gWorkPtr, gpucurrSpecID, CandidatePSMS);
-    else
 #else
+        std::cerr << "ABORT: params.nodes > 1 without MPI. Build with -DUSE_MPI=ON" << std::endl;
+        exit(-1);
+#endif // USE_MPI
+    }
+    else
         // combine the results
         status = hcp::gpu::cuda::s4::processResults(index, gWorkPtr, gpucurrSpecID);
-#endif // USE_MPI
 
     hcp::gpu::cuda::s3::reset_dScores();
 
@@ -650,8 +654,8 @@ __global__ void resetdScores(double *survival, int *cpsms, dhCell *topscore)
 // -------------------------------------------------------------------------------------------- //
 
 __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *dQ_idx, int *dQ_minlimits,
-                         int *dQ_maxlimits, uint_t* d_bA, uint_t *d_iA, int iter, BYC *bycP, 
-                         int maxchunk, double *d_survival, int *d_cpsms, dhCell *d_topscore, int dF, 
+                         int *dQ_maxlimits, uint_t* d_bA, uint_t *d_iA, int iter, BYC *bycP,
+                         int maxchunk, double *d_survival, int *d_cpsms, dhCell *d_topscore, int dF,
                          int speclen, int maxmass, int scale, short min_shp, int ixx)
 {
     BYC *bycPtr = &bycP[blockIdx.x * maxchunk];
@@ -701,7 +705,7 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
             auto data = d_iA + d_bA[bin];
 
             int n = d_bA[bin + 1] - d_bA[bin];
-    
+
             /* If no ions in the bin */
             if (n < 1)
                 continue;
@@ -750,7 +754,7 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
                 __syncthreads();
 
                 //
-                // reduce the BYC elements to avoid 
+                // reduce the BYC elements to avoid
                 // race conditions and locking
                 //
 
@@ -853,7 +857,7 @@ __global__ void SpSpGEMM(spectype_t *dQ_moz, spectype_t *dQ_intensity, uint_t *d
         ushort_t shpk = bcc + ycc;
 
         // filter by the min shared peaks
-        if (shpk >= min_shp) 
+        if (shpk >= min_shp)
         {
             // get the precomputed log(factorial(x))
 

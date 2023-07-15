@@ -57,7 +57,7 @@ auto getcurrtimeanddate()
 
 auto getcurrpath()
 {
-    // COMPILER VERSION GCC 9.1.0+ required 
+    // COMPILER VERSION GCC 9.1.0+ required
 #if __GNUC__ > 9 || (__GNUC__ == 9 && (__GNUC_MINOR__ >= 1))
     // COMPILER VERSION GCC 9.1.0+ required for std::filesystem calls
     static string_t currpath = std::filesystem::current_path();
@@ -97,7 +97,7 @@ auto sanitize_dM(T &dM)
 //
 // structure to store parsed params
 //
-struct params_t : public argparse::Args 
+struct params_t : public argparse::Args
 {
 
     //
@@ -155,7 +155,7 @@ struct params_t : public argparse::Args
     // base intensity x1000
     int &base_int                        = kwarg("base,base_int", "base noramlized peak intensity for MS/MS data x1000").set_default(1000);
 
-    // MS/MS peak cut off ratio 
+    // MS/MS peak cut off ratio
     double &cutoff                       = kwarg("cutoff_ratio", "cutoff peak ratio wrt base intensity (e.g. 1% = 0.01)").set_default(0.01);
 
     // m/z axis resolution
@@ -172,14 +172,14 @@ struct params_t : public argparse::Args
 
     // LBE distribution policy
 
-    // DistPolicy_t requires magic_enum submodule. 
+    // DistPolicy_t requires magic_enum submodule.
     DistPolicy_t &lbe_policy             = kwarg("policy", "LBE Distribution policy (cyclic, chunk, zigzag)").set_default(DistPolicy_t::cyclic);
 
     // scratch pad memory in MB
     int &bufferMBs                       = kwarg("buff,spad_mem", "buffer (scratch pad) RAM memory in MB (recommended: 2048MB+)").set_default(2048);
 
     // this should be an optional parameter
-    std::optional<std::vector<std::string>> &mods     
+    std::optional<std::vector<std::string>> &mods
                                          = kwarg("m,mods", "list of variable post-translational modifications (PTMs)").multi_argument();
 
     // do not keep the full database index on GPU
@@ -229,7 +229,7 @@ void getParams(gParams &params)
 
 #if !defined(ARGP_ONLY)
 
-    // COMPILER VERSION GCC 9.1.0+ required 
+    // COMPILER VERSION GCC 9.1.0+ required
 #if __GNUC__ > 9 || (__GNUC__ == 9 && (__GNUC_MINOR__ >= 1))
     // COMPILER VERSION GCC 9.1.0+ required for std::filesystem calls
     std::filesystem::create_directory(parser.workspace);
@@ -256,6 +256,7 @@ void getParams(gParams &params)
         params.gputhreads = parser.gputhreads;
 #else
         params.gputhreads = 0;
+        params.useGPU = false;
 #endif // USE_GPU
 
         // Get the min peptide length
@@ -281,7 +282,7 @@ void getParams(gParams &params)
         params.dM = parser.deltaM;
         sanitize_dM(params.dM);
 
-        // Get the min mass 
+        // Get the min mass
         params.min_mass = parser.minprecmass;
 
         // Get the max mass
@@ -325,7 +326,7 @@ void getParams(gParams &params)
             params.vModInfo.num_vars = modslist.size();
             params.modconditions = std::to_string(params.vModInfo.vmods_per_pep);
 
-            // process the strings: AA:MASS.0:NUM 
+            // process the strings: AA:MASS.0:NUM
             for (auto md = 0; md < params.vModInfo.num_vars; md++)
             {
                 // for each mod string
@@ -430,7 +431,7 @@ void printParser()
     /* Get the max fragment charge */
     printVar(parser.maxz);
 
-    // Get the m/z axis resolution 
+    // Get the m/z axis resolution
     printVar(parser.resolution);
 
     // Get the fragment mass tolerance
@@ -439,7 +440,7 @@ void printParser()
     // Get the precursor mass tolerance
     printVar(parser.deltaM);
 
-    // Get the min mass 
+    // Get the min mass
     printVar(parser.minprecmass);
 
     // Get the max mass

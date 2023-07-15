@@ -84,11 +84,8 @@ if(OpenMP_FOUND)
 
 endif()
 
-if (USE_MPI AND NOT USE_GPU)
+if (USE_MPI)
     find_package(MPI)
-else()
-    message(WARNING "USE_MPI and USE_GPU not fully supported together due to filesystem support.")
-    message(STATUS "=> Setting USE_MPI=OFF")
 endif()
 
 if(MPI_FOUND AND USE_MPI)

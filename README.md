@@ -34,6 +34,7 @@ Read more about HiCOPS and GiCOPS in the following research works. Please ***CIT
 
 > <span style="color:black">Muhammad Haseeb, and Fahad Saeed. ***"High performance computing framework for tera-scale database search of mass spectrometry data."*** Nature Computational Science, Volume no. 1, Issue no. 8 (2021): pp no. 550-561.</span> [https://doi.org/10.1038/s43588-021-00113-z](https://doi.org/10.1038/s43588-021-00113-z) (Read at [SharedIt](https://rdcu.be/cvFan))
 
+> <span style="color:black">Muhammad Haseeb, and Fahad Saeed. ***"GPU-acceleration of the distributed-memory database peptide search of mass spectrometry data."*** Nature Scientific Report, Volume no. 13, Issue no. 1 (2023).</span> [https://www.nature.com/articles/s41598-023-43033-w)
 
 > <span style="color:black">Muhammad Haseeb, and Fahad Saeed. ***"GPU-Acceleration of the Distributed-Memory Database Peptide Search on Supercomputers."*** In 2022 ASMS Conference on Mass Spectrometry and Allied Topics, ASMS 2022.</span>
 

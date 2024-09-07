@@ -45,7 +45,7 @@ Open an issue [here](https://github.com/pcdslab/gicops/issues). Please include a
 
 ## Credits
 
-HiCOPS and GiCOPS are under active development at the [Parallel Computing and Data Science Laboratory](https://saeedlab.cs.fiu.edu) at the [Florida International University](https://www.cis.fiu.edu) in Miami, Florida, USA. 
+HiCOPS and GiCOPS are under active development at the [Parallel Computing and Data Science Laboratory](https://pcdslab.github.io) at the [Florida International University](https://www.cis.fiu.edu) in Miami, Florida, USA. 
 
 Primary researchers:
 

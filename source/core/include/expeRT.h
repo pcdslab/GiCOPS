@@ -118,7 +118,7 @@ public:
     expeRT();
 
     /* Destructor */
-    virtual ~expeRT();
+    ~expeRT();
 
     /* Function to reset the data */
     VOID ResetPartialVectors();

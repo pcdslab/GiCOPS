@@ -72,7 +72,7 @@ public:
         sem_init(&lockw, 0, 1);
     }
 
-    virtual ~lwbuff()
+    ~lwbuff()
     {
         cap = 0;
         thr_low = 0;

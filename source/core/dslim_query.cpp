@@ -310,7 +310,7 @@ status_t DSLIM_SearchManager(Index *index)
     // setup the comm and scheduling handles
     //
     if (status == SLM_SUCCESS)
-        status = DSLIM_Setup_Handles(); 
+        status = DSLIM_Setup_Handles();
 
     //
     // parallel database search
@@ -358,7 +358,7 @@ void GPU_DistributedSearch(Index *index)
             gBatchlock.unlock();
             break;
         }
-        
+
         // increase the gBatchID
         gBatchID++;
 
@@ -387,7 +387,7 @@ void GPU_DistributedSearch(Index *index)
         MARK_END(penal);
 
         auto penalty = ELAPSED_SECONDS(penal);
-        
+
         ptime += penalty;
 
 #ifndef DIAGNOSE
@@ -532,7 +532,7 @@ status_t DistributedSearch(Index *index)
             gBatchlock.unlock();
             break;
         }
-        
+
         // increase the gBatchID
         gBatchID++;
 
@@ -730,27 +730,12 @@ status_t DSLIM_Destroy_Handles(Index *index)
     }
 #endif /* USE_MPI */
 
-    //
-    // Deinitialize
-    //
-
-    /* Delete the scheduler object */
-    if (SchedHandle != nullptr)
-    {
-        /* Deallocate the scheduler module */
-        delete SchedHandle;
-        SchedHandle = nullptr;
-    }
-
     /* Deinitialize the IO module */
     status = DSLIM_Deinit_IO();
 
     if (status == SLM_SUCCESS && params.nodes == 1)
     {
         status = DFile_DeinitFiles();
-
-        delete[] ePtrs;
-        ePtrs = nullptr;
     }
 
     // deinitialize MS2 prep pointers
@@ -994,7 +979,7 @@ status_t DSLIM_QuerySpectrum(Queries<spectype_t> *ss, Index *index, uint_t idxch
                 if (resPtr->cpsms >= 1)
                 {
                     /* Extract the top PSM */
-                    hCell&& psm = resPtr->topK.getMax();
+                    hCell& psm = resPtr->topK.getMax();
 
                     /* Put it in the list */
                     CandidatePSMS[currSpecID + queries] = psm;
@@ -1370,7 +1355,7 @@ VOID DSLIM_IO_Threads_Entry()
 
         /* Extract a chunk and return the chunksize */
         status = Query->extractbatch<int>(QCHUNK, ioPtr, rem_spec);
-        
+
         // update remaining Query entries
         ioPtr->batchNum = Query->Curr_chunk();
         ioPtr->fileNum  = Query->getQfileIndex();

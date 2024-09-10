@@ -17,7 +17,7 @@
  *
  */
 
-#pragma once 
+#pragma once
 
 #include "common.hpp"
 #include <semaphore.h>
@@ -56,6 +56,10 @@ public:
     lwqueue(int_t dcap)
     {
         cap = dcap;
+        if (cap <= 0)
+        {
+            throw std::runtime_error("lwqueue initialized with zero capacity. Aborting");
+        }
         arr = new T[cap];
         filled = 0;
         head = 0;
@@ -86,6 +90,10 @@ public:
     lwqueue(int_t dcap, BOOL sem)
     {
         cap = dcap;
+        if (cap <= 0)
+        {
+            throw std::runtime_error("lwqueue initialized with zero capacity. Aborting");
+        }
         arr = new T[cap];
         filled = 0;
         head = 0;
@@ -120,7 +128,7 @@ public:
         }
     }
 
-    virtual ~lwqueue()
+    ~lwqueue()
     {
         delete[] arr;
         arr = NULL;

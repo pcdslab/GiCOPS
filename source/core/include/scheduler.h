@@ -69,7 +69,7 @@ private:
 public:
     Scheduler();
     Scheduler(int_t);
-    virtual ~Scheduler();
+    ~Scheduler();
 
     status_t dispatchThread();
     int_t    getNumActivThds();

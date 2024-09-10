@@ -42,7 +42,7 @@ extern gParams params;
 
 // -------------------------------------------------------------------------------------------- //
 
-namespace hcp 
+namespace hcp
 {
 
 namespace gpu
@@ -56,10 +56,10 @@ namespace s4
 
 struct compare_dhCell
 {
-    __host__ __device__ 
+    __host__ __device__
     bool operator()(dhCell lhs, dhCell rhs)
     {
-        return lhs.hyperscore < rhs.hyperscore; 
+        return lhs.hyperscore < rhs.hyperscore;
     }
 };
 
@@ -117,7 +117,7 @@ __host__ void freed_eValues()
     auto driver = hcp::gpu::cuda::driver::get_instance();
 
     auto &&d_evalues = getd_eValues();
-    
+
     if (d_evalues)
     {
         hcp::gpu::cuda::error_check(hcp::gpu::cuda::device_free_async(d_evalues, driver->stream[DATA_STREAM]));

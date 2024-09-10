@@ -41,7 +41,7 @@ public:
     friend status_t DSLIM_CarryForward(Index *index, DSLIM_Comm *CommHandle, expeRT *ePtr, hCell *CandidatePSMS, int_t cpsmSize);
     DSLIM_Comm();
     DSLIM_Comm(int_t);
-    virtual ~DSLIM_Comm();
+    ~DSLIM_Comm() = default;
     status_t AddBatch(int_t, int_t, int_t);
 };
 

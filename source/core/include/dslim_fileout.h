@@ -26,7 +26,7 @@
 
 /* Function Definitions */
 status_t    DFile_PrintPartials(uint_t specid, Results *resPtr);
-status_t    DFile_PrintScore(Index *index, uint_t specid, 
+status_t    DFile_PrintScore(Index *index, uint_t specid,
                              float_t pmass, hCell *psm, double_t e_x, uint_t npsms);
 status_t    DFile_InitFiles();
 status_t    DFile_DeinitFiles();

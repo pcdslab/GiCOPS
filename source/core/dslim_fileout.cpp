@@ -65,10 +65,10 @@ status_t DFile_InitFiles()
                 string_t filename = common + "_" + std::to_string(f) + ".tsv";
                 tsvs[f].open(filename);
 
-                tsvs[f] << "file\t" << "scan_num\t" << "prec_mass\t" << "charge\t" 
-                        << "retention_time\t" << "peptide\t" << "matched_ions\t" 
-                        << "total_ions\t" << "calc_pep_mass\t" << "mass_diff\t" 
-                        << "mod_info\t" << "hyperscore\t" << "expectscore\t" 
+                tsvs[f] << "file\t" << "scan_num\t" << "prec_mass\t" << "charge\t"
+                        << "retention_time\t" << "peptide\t" << "matched_ions\t"
+                        << "total_ions\t" << "calc_pep_mass\t" << "mass_diff\t"
+                        << "mod_info\t" << "hyperscore\t" << "expectscore\t"
                         << "num_hits" << std::endl;
             }
         }
@@ -115,20 +115,14 @@ status_t DFile_PrintScore(Index *index, uint_t specid, float_t pmass, hCell *psm
 
     Index * lclindex = index + psm->idxoffset;
     int_t peplen = lclindex->pepIndex.peplen;
+    if (peplen < params.min_len or peplen > params.max_len)
+    {
+        throw std::runtime_error("Invalid peptide length encountered. Aborting");
+    }
     int_t pepid = psm->psid;
 
-    /* The size is peplen + 1 to add the \0 character at the end */
-    char_t pepseq[peplen + 1];
-
-    /* Write the \0 character to the last position of pepseq buffer */
-    pepseq[peplen] = '\0';
-
-    /* Copy the rest of the string to the pepseq buffer */
-    strncpy((char_t *)&(pepseq[0]), lclindex->pepIndex.seqs +
-             (lclindex->pepEntries[psm->psid].seqID * peplen), peplen);
-
-    /* Make a string from the char [] */
-    string_t pep = pepseq;
+    auto *const pep_string = lclindex->pepIndex.seqs +
+             (lclindex->pepEntries[psm->psid].seqID * peplen);
 
     /* Print the PSM info to the file */
     tsvs[thno]         << queryfiles[psm->fileIndex];
@@ -136,7 +130,7 @@ status_t DFile_PrintScore(Index *index, uint_t specid, float_t pmass, hCell *psm
     tsvs[thno] << '\t' << std::to_string(pmass);
     tsvs[thno] << '\t' << std::to_string(psm->pchg);
     tsvs[thno] << '\t' << std::to_string(psm->rtime);
-    tsvs[thno] << '\t' << pep;
+    tsvs[thno] << '\t' << std::string_view(pep_string, peplen);
     tsvs[thno] << '\t' << std::to_string(psm->sharedions);
     tsvs[thno] << '\t' << std::to_string(psm->totalions);
     tsvs[thno] << '\t' << std::to_string(lclindex->pepEntries[pepid].Mass);

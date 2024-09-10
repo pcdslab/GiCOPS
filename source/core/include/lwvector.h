@@ -57,6 +57,8 @@ public:
     lwvector(int_t dsiz)
     {
         cap = dsiz;
+        if (cap <= 0)
+            throw std::runtime_error("lwvector created with zero capacity. Aborting");
         arr = new T [cap];
         head = 0;
         tail = 0;
@@ -78,6 +80,8 @@ public:
     lwvector(T *p1, T *p2)
     {
         cap = 2 * std::distance(p1, p2);
+        if (cap <= 0)
+            throw std::runtime_error("lwvector created with zero capacity. Aborting");
         arr = new T[cap];
         head = 0;
         tail = 0;
@@ -93,6 +97,9 @@ public:
 
     lwvector(int_t dsiz, T val)
     {
+        if (dsiz <= 0)
+            throw std::runtime_error("lwvector created with zero size. Aborting");
+
         arr = new T [dsiz];
         cap = dsiz;
         head = 0;
@@ -144,7 +151,7 @@ public:
         }
     }
 
-    virtual ~lwvector()
+    ~lwvector()
     {
         head = tail = 0;
         sze = cap = 0;

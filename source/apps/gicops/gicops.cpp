@@ -326,14 +326,6 @@ status_t main(int_t argc, char_t* argv[])
         status = DSLIM_DeallocateSC();
     }
 
-    /* De-initialize the ion index */
-    if (status == SLM_SUCCESS)
-    {
-        /* De-initialize the ion index */
-        for (uint_t peplen = minlen; peplen <= maxlen; peplen++)
-            status = DSLIM_DeallocateIonIndex(slm_index + peplen - minlen);
-    }
-
 #if defined (USE_TIMEMORY)
     // stop instrumentation
     search_inst.stop();

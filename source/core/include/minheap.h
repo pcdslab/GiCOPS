@@ -36,7 +36,7 @@ private:
     int capacity;
     T* array;
 
-    int heapify(int element_position); 
+    int heapify(int element_position);
     void swap(T&, T&);
     void swap(int, int);
 
@@ -46,37 +46,31 @@ public:
     {
         this->capacity = 0;
         this->size = 0;
-        this->array = NULL;
+        this->array = nullptr;
     }
 
     minHeap(int capacity)
     {
         this->capacity = capacity;
         this->size = 0;
+        if (!this->capacity)
+        {
+            throw std::runtime_error("minHeap initialized with zero capacity. Aborting");
+        }
         this->array = new T[this->capacity];
     }
 
-    ~minHeap()
-    {
-        this->capacity = 0;
-        this->size = 0;
-
-        if (this->array != NULL)
-        {
-            delete[] this->array;
-            this->array = NULL;
-        }
-    }
+    ~minHeap() = default;
 
     int init(int capacity);
     int reset();
-    int insert(T &element); 
+    int insert(T &element);
     int get_capacity();
     int get_size();
-    T extract_min(); 
+    T extract_min();
     int decrease_key(int element_position, T new_value);
     int increase_key(int element_position, T new_value);
-    int heap_sort(T *output_array); 
+    int heap_sort(T *output_array);
     T show_element(int element_position);
     T getMax();
 };
@@ -177,7 +171,7 @@ int minHeap<T>::heapify(int element_position)
 }
 
 template<class T>
-T minHeap<T>::extract_min() 
+T minHeap<T>::extract_min()
 {
     if (size < 1)
     {
@@ -186,7 +180,7 @@ T minHeap<T>::extract_min()
 
     T min = array[0];
     swap(array[0], array[size - 1]);
-    size--; 
+    size--;
     heapify(0);
     return min;
 }
